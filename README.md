@@ -184,11 +184,16 @@ use Filestore only if you must share one model across replicas).
 
 ## 6. RAG content & ops
 
-- **Seeding docs**: the ingest CronJob reads `/data/docs` from the `rag-data`
-  PVC. Either copy docs there manually, or set `DOCS_GCS_URI`
-  (e.g. `gs://my-bucket/docs`) on the seed initContainer, which `gsutil rsync`s
-  from GCS before indexing. The workload identity service account needs
-  `roles/storage.objectViewer` on the bucket.
+- **Knowledge base**: the ingest CronJob indexes **only**
+  `local-data/10-internal-data-dump.md` (the synthetic internal data dump) into
+  the `rag-data` PVC, wiping the collection first (`ingest --wipe --paths`), so
+  the RAG index always equals exactly that file. To seed it on GKE, upload the
+  file and set `DOCS_GCS_URI` to its GCS object path
+  (e.g. `gs://rag-llm-langchain-docs/10-internal-data-dump.md`) on the seed
+  initContainer, which `gsutil cp`s it into `/data/docs`. The workload identity
+  service account needs `roles/storage.objectViewer` on the bucket.
+  - Local bring-up (`docker compose up ingest`) mounts `./local-data` and
+    ingests the same single file automatically.
 - **Persistence**: `rag-data` PVC must use a ReadWriteMany-capable class
   (`nfs-filestore`, NetApp, etc.) because the rag-service *and* ingest pod both
   mount it. GCE `pd-ssd`/`standard-rwo` are RWO-only. Sized at 20Gi by default;

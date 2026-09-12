@@ -68,10 +68,10 @@ services:
   ingest:
     build: ./rag
     container_name: rag-ingest
-    command: ["python", "-m", "ingest", "--dir", "/data/docs"]
+    command: ["python", "-m", "ingest", "--wipe", "--paths", "/data/kb/10-internal-data-dump.md"]
     working_dir: /rag
     volumes:
-      - ./docs:/data/docs
+      - ./local-data:/data/kb
       - rag-persist:/data/chroma
     environment:
       RAG_PERSIST_DIR: /data/chroma

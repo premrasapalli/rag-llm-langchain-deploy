@@ -1,4 +1,4 @@
-"""Document ingestion job: reads markdown/txt files and upserts chunks."""
+"""Document ingestion job: reads markdown/txt files (dir or explicit paths) and upserts chunks."""
 import argparse
 import logging
 import os
@@ -13,9 +13,19 @@ logger = logging.getLogger("rag.ingest")
 SUPPORTED = {".md", ".txt"}
 
 
-def ingest_dir(data_dir: str) -> int:
+def _paths_from_dir(data_dir: str) -> list[Path]:
+    return sorted(p for p in Path(data_dir).rglob("*") if p.suffix in SUPPORTED)
+
+
+def ingest_paths(paths: list[Path], wipe: bool = False) -> int:
     store = get_store()
-    paths = [p for p in Path(data_dir).rglob("*") if p.suffix in SUPPORTED]
+    if wipe:
+        try:
+            store.delete_collection()
+            logger.info("Wiped existing collection")
+        except Exception:  # noqa: BLE001 - nothing to wipe is fine
+            logger.info("Collection did not exist; nothing to wipe")
+        store = get_store()
     total = 0
 
     for path in paths:
@@ -33,8 +43,25 @@ def ingest_dir(data_dir: str) -> int:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dir", default="/data/docs")
+    parser.add_argument("--dir", default=None, help="Directory to scan recursively")
+    parser.add_argument(
+        "--paths", nargs="*", default=None, help="Explicit files to ingest (instead of --dir)"
+    )
+    parser.add_argument(
+        "--wipe",
+        action="store_true",
+        help="Delete the existing collection first (knowledge base == exactly these files)",
+    )
     args = parser.parse_args()
-    if not os.path.isdir(args.dir):
-        raise SystemExit(f"Directory not found: {args.dir}")
-    ingest_dir(args.dir)
+
+    if args.paths:
+        targets = [Path(p) for p in args.paths]
+        missing = [str(p) for p in targets if not p.is_file()]
+        if missing:
+            raise SystemExit(f"File not found: {', '.join(missing)}")
+    elif args.dir and os.path.isdir(args.dir):
+        targets = _paths_from_dir(args.dir)
+    else:
+        raise SystemExit("Provide an existing --dir or --paths")
+
+    ingest_paths(targets, wipe=args.wipe)
