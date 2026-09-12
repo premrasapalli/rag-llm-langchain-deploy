@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: serving-llm
-  namespace: genai
+  namespace: rag-llm-langchain
   labels:
     app: serving-llm
 spec:

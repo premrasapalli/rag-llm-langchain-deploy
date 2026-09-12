@@ -18,30 +18,30 @@ the Docker images to Artifact Registry.
 - **OIDC Provider:** `.../providers/github-provider`
   - Issuer: `https://token.actions.githubusercontent.com`
   - Attribute condition: `assertion.repository_owner == 'premrasapalli'`
-- **Service Account:** `github-actions@aiml-project-idp.iam.gserviceaccount.com`
+- **Service Account:** `github-actions@rag-llm-langchain.iam.gserviceaccount.com`
 - **GitHub Variables:**
   - `WIF_PROVIDER` = `projects/784802248985/locations/global/workloadIdentityPools/github-pool/providers/github-provider`
-  - `WIF_SERVICE_ACCOUNT` = `github-actions@aiml-project-idp.iam.gserviceaccount.com`
-- **GitHub Secret:** `PROJECT_ID` = `aiml-project-idp`
+  - `WIF_SERVICE_ACCOUNT` = `github-actions@rag-llm-langchain.iam.gserviceaccount.com`
+- **GitHub Secret:** `PROJECT_ID` = `rag-llm-langchain`
 
 ---
 
 ## Step 1 — Prerequisites
 
-- A GCP project with billing enabled (`aiml-project-idp`).
+- A GCP project with billing enabled (`rag-llm-langchain`).
 - `gcloud` CLI authenticated:
   ```bash
   gcloud auth login
-  gcloud config set project aiml-project-idp
+  gcloud config set project rag-llm-langchain
   ```
 - An Artifact Registry repository:
   ```bash
-  gcloud artifacts repositories create genai \
+  gcloud artifacts repositories create rag-llm-langchain \
     --repository-format=docker \
     --location=us-central1 \
-    --description="GenAI container images"
+    --description="RAG LLM LangChain container images"
   ```
-- The GitHub repository URL (e.g. `premrasapalli/gke-genai-deployment`).
+- The GitHub repository URL (e.g. `premrasapalli/rag-llm-langchain-deploy`).
 
 ---
 
@@ -85,9 +85,9 @@ gcloud iam service-accounts create github-actions \
 
 ```bash
 gcloud iam service-accounts add-iam-policy-binding \
-  github-actions@aiml-project-idp.iam.gserviceaccount.com \
+  github-actions@rag-llm-langchain.iam.gserviceaccount.com \
   --role="roles/iam.workloadIdentityUser" \
-  --member="principalSet://iam.googleapis.com/projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/github-pool/attribute.repository/premrasapalli/gke-genai-deployment"
+  --member="principalSet://iam.googleapis.com/projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/github-pool/attribute.repository/premrasapalli/rag-llm-langchain-deploy"
 ```
 
 Replace `PROJECT_NUMBER` with your project number. This binding lets the GitHub
@@ -100,13 +100,13 @@ workflow exchange its OIDC token for an access token as this service account.
 The workflow needs to read an access token and push images:
 
 ```bash
-gcloud projects add-iam-policy-binding aiml-project-idp \
-  --member="serviceAccount:github-actions@aiml-project-idp.iam.gserviceaccount.com" \
+gcloud projects add-iam-policy-binding rag-llm-langchain \
+  --member="serviceAccount:github-actions@rag-llm-langchain.iam.gserviceaccount.com" \
   --role="roles/iam.serviceAccountTokenCreator"
 
-gcloud artifacts repositories add-iam-policy-binding genai \
+gcloud artifacts repositories add-iam-policy-binding rag-llm-langchain \
   --location=us-central1 \
-  --member="serviceAccount:github-actions@aiml-project-idp.iam.gserviceaccount.com" \
+  --member="serviceAccount:github-actions@rag-llm-langchain.iam.gserviceaccount.com" \
   --role="roles/artifactregistry.writer"
 ```
 
@@ -142,13 +142,13 @@ gh variable set WIF_PROVIDER \
   --body "projects/784802248985/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
 
 gh variable set WIF_SERVICE_ACCOUNT \
-  --body "github-actions@aiml-project-idp.iam.gserviceaccount.com"
+  --body "github-actions@rag-llm-langchain.iam.gserviceaccount.com"
 ```
 
 Set the secret:
 
 ```bash
-gh secret set PROJECT_ID --body "aiml-project-idp"
+gh secret set PROJECT_ID --body "rag-llm-langchain"
 ```
 
 ---
@@ -193,7 +193,7 @@ jobs:
           echo "${{ steps.auth.outputs.access_token }}" | \
             docker login -u oauth2accesstoken --password-stdin \
             https://${{ env.REGION }}-docker.pkg.dev
-          echo "REPO=${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/genai" >> "$GITHUB_ENV"
+          echo "REPO=${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/rag-llm-langchain" >> "$GITHUB_ENV"
 ```
 
 Two things are required for WIF to work in the workflow:
@@ -232,7 +232,7 @@ Permission 'iam.serviceAccounts.getAccessToken' denied on resource
 ### Issue 3 — Invalid Docker image tag / Artifact Registry upload denied
 
 ```
-invalid tag "us-central1-docker.pkg.dev//genai/model-loader:1.0.0": invalid reference format
+invalid tag "us-central1-docker.pkg.dev//rag-llm-langchain/model-loader:1.0.0": invalid reference format
 Permission 'artifactregistry.repositories.uploadArtifacts' denied on resource
 ```
 
@@ -268,7 +268,7 @@ gcloud iam workload-identity-pools describe github-pool --location=global
 
 # The images landed
 gcloud artifacts docker images list \
-  us-central1-docker.pkg.dev/aiml-project-idp/genai
+  us-central1-docker.pkg.dev/rag-llm-langchain/rag-llm-langchain
 ```
 
 ## Summary
@@ -277,9 +277,9 @@ gcloud artifacts docker images list \
 |-------|-------|
 | Identity Pool | `github-pool` (global) |
 | OIDC Provider | `github-provider` |
-| Service Account | `github-actions@aiml-project-idp.iam.gserviceaccount.com` |
+| Service Account | `github-actions@rag-llm-langchain.iam.gserviceaccount.com` |
 | WIF Roles | `workloadIdentityUser` + `serviceAccountTokenCreator` |
-| Registry Role | `artifactregistry.writer` on the `genai` repo |
+| Registry Role | `artifactregistry.writer` on the `rag-llm-langchain` repo |
 | GitHub Variables | `WIF_PROVIDER`, `WIF_SERVICE_ACCOUNT` |
 | GitHub Secret | `PROJECT_ID` |
 

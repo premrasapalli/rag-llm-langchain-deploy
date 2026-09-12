@@ -1,13 +1,13 @@
 output "cluster_name" {
-  value = google_container_cluster.genai.name
+  value = google_container_cluster.rag_llm_langchain.name
 }
 
 output "cluster_endpoint" {
-  value = google_container_cluster.genai.endpoint
+  value = google_container_cluster.rag_llm_langchain.endpoint
 }
 
 output "artifact_registry" {
-  value = "${var.region}-docker.pkg.dev/${var.project_id}/genai"
+  value = "${var.region}-docker.pkg.dev/${var.project_id}/rag-llm-langchain"
 }
 
 output "gpu_pool_id" {
@@ -15,5 +15,5 @@ output "gpu_pool_id" {
 }
 
 output "gateway_static_ip" {
-  value = google_compute_global_address.genai_gateway.address
+  value = google_compute_global_address.rag_llm_langchain_gateway.address
 }

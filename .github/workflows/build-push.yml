@@ -39,7 +39,7 @@ jobs:
           echo "${{ steps.auth.outputs.access_token }}" | \
             docker login -u oauth2accesstoken --password-stdin \
             https://${{ env.REGION }}-docker.pkg.dev
-          echo "REPO=${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/genai" >> "$GITHUB_ENV"
+          echo "REPO=${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/rag-llm-langchain" >> "$GITHUB_ENV"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3

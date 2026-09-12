@@ -50,7 +50,7 @@ vLLM is a high-performance inference server for GPUs. It exposes an
 # When GPU is available (vLLM is configured in k8s/base/serving-llm.yaml + GPU overlay)
 curl -s http://localhost:8000/v1/chat/completions \
   -H 'Content-Type: application/json' \
-  -d '{"model":"genai-model","messages":[{"role":"user","content":"Hello"}]}'
+  -d '{"model":"rag-llm-langchain-model","messages":[{"role":"user","content":"Hello"}]}'
 ```
 
 ## Ollama (CPU path)
@@ -60,7 +60,7 @@ OpenAI-compatible API:
 
 ```bash
 # Test via port-forward to the running LLM service
-kubectl -n genai port-forward svc/serving-llm 8000:8000 & PF=$!
+kubectl -n rag-llm-langchain port-forward svc/serving-llm 8000:8000 & PF=$!
 sleep 5
 curl -s http://localhost:8000/v1/chat/completions \
   -H 'Content-Type: application/json' \
@@ -95,7 +95,7 @@ We use `BAAI/bge-small-en-v1.5` — small, fast, works on CPU, produces
 
 ```bash
 # Test the embedding endpoint directly
-kubectl -n genai port-forward svc/serving-embedding 8001:8001 & PF=$!
+kubectl -n rag-llm-langchain port-forward svc/serving-embedding 8001:8001 & PF=$!
 sleep 5
 curl -s http://localhost:8001/embeddings \
   -H 'Content-Type: application/json' \
@@ -112,8 +112,8 @@ kill $PF
 
 ```bash
 # Verify the rag-service can reach the embedding server
-R=$(kubectl get pod -n genai -l app=rag-service -o jsonpath='{.items[0].metadata.name}')
-kubectl exec -n genai "$R" -- python -c "
+R=$(kubectl get pod -n rag-llm-langchain -l app=rag-service -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -n rag-llm-langchain "$R" -- python -c "
 from openai import OpenAI
 c = OpenAI(base_url='http://serving-embedding:8001/v1', api_key='none')
 r = c.embeddings.create(model='BAAI/bge-small-en-v1.5', input='test')
@@ -125,6 +125,6 @@ print('embedding ok, dims:', len(r.data[0].embedding))
 
 ```bash
 # Confirm both use the same model
-kubectl -n genai get deploy serving-embedding -o jsonpath='{.spec.template.spec.containers[0].env}' | python3 -c \
+kubectl -n rag-llm-langchain get deploy serving-embedding -o jsonpath='{.spec.template.spec.containers[0].env}' | python3 -c \
   "import sys,json; [print(e['name'], '=', e['value']) for e in json.load(sys.stdin)]"
 ```

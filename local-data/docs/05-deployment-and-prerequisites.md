@@ -19,16 +19,16 @@ brew install gh   # GitHub CLI (optional, used for WIF setup)
 
 ```bash
 gcloud auth login
-gcloud config set project aiml-project-idp
+gcloud config set project rag-llm-langchain
 gcloud auth application-default login    # for terraform
 ```
 
 ### 0.3 Link billing (this blocked us — fix early)
 
 ```bash
-gcloud billing projects link aiml-project-idp \
+gcloud billing projects link rag-llm-langchain \
   --billing-account=01716C-ECBC7F-34FFF7
-gcloud billing projects describe aiml-project-idp   # billingEnabled: true
+gcloud billing projects describe rag-llm-langchain   # billingEnabled: true
 ```
 
 ### 0.4 Enable required APIs
@@ -52,9 +52,9 @@ gcloud compute regions describe us-central1 \
 ### 0.6 Get cluster credentials
 
 ```bash
-gcloud container clusters get-credentials genai-cluster \
-  --region=us-central1 --project=aiml-project-idp
-kubectl config current-context    # should print the genai cluster
+gcloud container clusters get-credentials rag-llm-langchain-cluster \
+  --region=us-central1 --project=rag-llm-langchain
+kubectl config current-context    # should print the rag-llm-langchain cluster
 ```
 
 ### 0.7 Verify Docker works locally (arm64 builds will fail on amd64 nodes)
@@ -80,7 +80,7 @@ terraform apply
 
 ```bash
 gcloud container clusters list
-gcloud container node-pools list --cluster genai-cluster --region us-central1
+gcloud container node-pools list --cluster rag-llm-langchain-cluster --region us-central1
 gcloud artifacts repositories list --location=us-central1
 terraform output
 ```
@@ -99,7 +99,7 @@ cat terraform/terraform.tfvars | grep enable_gpu_pool
 ### B1. Enable Filestore CSI on the cluster
 
 ```bash
-gcloud container clusters update genai-cluster --region us-central1 \
+gcloud container clusters update rag-llm-langchain-cluster --region us-central1 \
   --update-addons=GcpFilestoreCsiDriver=ENABLED
 ```
 
@@ -125,15 +125,15 @@ gcloud builds submit --region=us-central1 --config=cloudbuild.yaml .
 
 ```bash
 gcloud artifacts docker images list \
-  us-central1-docker.pkg.dev/aiml-project-idp/genai
+  us-central1-docker.pkg.dev/rag-llm-langchain/rag-llm-langchain
 # gateway:1.0.0, rag:1.0.0, model-loader:1.0.0
 ```
 
 ### C3. Grant the node SA pull rights
 
 ```bash
-gcloud projects add-iam-policy-binding aiml-project-idp \
-  --member="serviceAccount:genai-gke@aiml-project-idp.iam.gserviceaccount.com" \
+gcloud projects add-iam-policy-binding rag-llm-langchain \
+  --member="serviceAccount:rag-llm-langchain-gke@rag-llm-langchain.iam.gserviceaccount.com" \
   --role=roles/artifactregistry.reader
 ```
 
@@ -147,16 +147,16 @@ gcloud projects add-iam-policy-binding aiml-project-idp \
 kubectl apply -k k8s/overlays/prod
 ```
 
-> Base alone carries short image names (`genai/gateway`); the prod overlay
+> Base alone carries short image names (`rag-llm-langchain/gateway`); the prod overlay
 > rewrites them to the full registry path. Skipping the overlay = pods pull
-> `docker.io/genai/...` and fail.
+> `docker.io/rag-llm-langchain/...` and fail.
 
 ### D2. Wait for everything to become healthy
 
 ```bash
-kubectl -n genai rollout status deploy/gateway deploy/rag-service \
+kubectl -n rag-llm-langchain rollout status deploy/gateway deploy/rag-service \
   deploy/serving-llm deploy/serving-embedding
-kubectl -n genai get pods
+kubectl -n rag-llm-langchain get pods
 ```
 
 Expected:
@@ -174,7 +174,7 @@ serving-embedding-xxx  1/1   Running
 ### E1. Create the LoadBalancer
 
 ```bash
-kubectl -n genai create service loadbalancer gateway-lb --tcp=80:8080 \
+kubectl -n rag-llm-langchain create service loadbalancer gateway-lb --tcp=80:8080 \
   --dry-run=client -o yaml | kubectl apply -f -
 kubectl -n get svc gateway-lb
 # EXTERNAL-IP: 34.63.204.167
@@ -194,28 +194,28 @@ curl -s http://34.63.204.167/models     # qwen2.5:0.5b
 ### F1. Create GCS bucket and upload docs
 
 ```bash
-gcloud storage buckets create gs://aiml-project-idp-rag-docs --location=us-central1
-gcloud storage cp -r local-data/docs gs://aiml-project-idp-rag-docs/docs
+gcloud storage buckets create gs://rag-llm-langchain-docs --location=us-central1
+gcloud storage cp -r local-data/docs gs://rag-llm-langchain-docs/docs
 gsutil iam ch \
-  serviceAccount:genai-gke@aiml-project-idp.iam.gserviceaccount.com:objectViewer \
-  gs://aiml-project-idp-rag-docs
+  serviceAccount:rag-llm-langchain-gke@rag-llm-langchain.iam.gserviceaccount.com:objectViewer \
+  gs://rag-llm-langchain-docs
 ```
 
 ### F2. Run manual ingest
 
 ```bash
-kubectl create job --from=cronjob/rag-ingest rag-ingest-manual -n genai
-kubectl wait --for=condition=complete job/rag-ingest-manual -n genai --timeout=300s
-kubectl logs -n genai job/rag-ingest-manual --tail=5
+kubectl create job --from=cronjob/rag-ingest rag-ingest-manual -n rag-llm-langchain
+kubectl wait --for=condition=complete job/rag-ingest-manual -n rag-llm-langchain --timeout=300s
+kubectl logs -n rag-llm-langchain job/rag-ingest-manual --tail=5
 # Ingested ... -> N chunks
 ```
 
 ### F3. Verify vector store persisted
 
 ```bash
-R=$(kubectl get pod -n genai -l app=rag-service -o jsonpath='{.items[0].metadata.name}')
-kubectl exec -n genai "$R" -- ls /data/chroma   # chroma.sqlite3 must exist
-kubectl exec -n genai "$R" -- python -c "from config import get_store; print(get_store()._collection.count())"
+R=$(kubectl get pod -n rag-llm-langchain -l app=rag-service -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -n rag-llm-langchain "$R" -- ls /data/chroma   # chroma.sqlite3 must exist
+kubectl exec -n rag-llm-langchain "$R" -- python -c "from config import get_store; print(get_store()._collection.count())"
 # > 0
 ```
 

@@ -2,7 +2,7 @@ apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: rag-ingest
-  namespace: genai
+  namespace: rag-llm-langchain
 spec:
   schedule: "0 */6 * * *"
   concurrencyPolicy: Forbid
@@ -39,7 +39,7 @@ spec:
                   mountPath: /data
           containers:
             - name: ingest
-              image: genai/rag:1.0.0
+              image: rag-llm-langchain/rag:1.0.0
               imagePullPolicy: Always
               command: ["python", "-m", "ingest", "--dir", "/data/docs"]
               env:

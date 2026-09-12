@@ -65,15 +65,15 @@ healthy ones.
 ### Verify the cluster exists and nodes are ready
 
 ```bash
-gcloud container clusters describe genai-cluster --region=us-central1 \
+gcloud container clusters describe rag-llm-langchain-cluster --region=us-central1 \
   --format="value(currentNodeVersion, currentNodeCount)"
-gcloud container node-pools list --cluster genai-cluster --region=us-central1
+gcloud container node-pools list --cluster rag-llm-langchain-cluster --region=us-central1
 ```
 
 ### Verify every deployment is running
 
 ```bash
-kubectl -n genai get deploy
+kubectl -n rag-llm-langchain get deploy
 # NAME              READY   UP-TO-DATE   AVAILABLE
 # gateway           2/2     2            2
 # rag-service       1/1     1            1
@@ -93,7 +93,7 @@ kubectl get sc
 ### Verify the PVCs are bound
 
 ```bash
-kubectl -n genai get pvc
+kubectl -n rag-llm-langchain get pvc
 # NAME           STATUS   VOLUME                                     CAPACITY
 # model-store    Bound    pvc-xxxx                                  50Gi
 # embed-store    Bound    pvc-yyyy                                  10Gi
@@ -103,7 +103,7 @@ kubectl -n genai get pvc
 ### Verify services have DNS names
 
 ```bash
-kubectl -n genai get svc
+kubectl -n rag-llm-langchain get svc
 # NAME                 TYPE        CLUSTER-IP    PORT
 # gateway              ClusterIP   10.x.x.x      80/TCP
 # serving-llm          ClusterIP   10.x.x.x      8000/TCP
@@ -114,7 +114,7 @@ kubectl -n genai get svc
 ### Verify the LoadBalancer has a public IP
 
 ```bash
-kubectl -n genai get svc gateway-lb
+kubectl -n rag-llm-langchain get svc gateway-lb
 # NAME         TYPE           CLUSTER-IP    EXTERNAL-IP
 # gateway-lb   LoadBalancer   10.x.x.x      34.63.204.167
 ```
@@ -144,8 +144,8 @@ curl -s -X POST http://34.63.204.167/rag \
 `docs (/data/docs or GCS) -> chunk + embed(TEI) -> store in Chroma (rag-data)`
 
 ```bash
-kubectl create job --from=cronjob/rag-ingest rag-ingest-manual -n genai
-kubectl logs -n genai job/rag-ingest-manual --tail=5
+kubectl create job --from=cronjob/rag-ingest rag-ingest-manual -n rag-llm-langchain
+kubectl logs -n rag-llm-langchain job/rag-ingest-manual --tail=5
 # Ingested ... -> N chunks
 ```
 
@@ -158,7 +158,7 @@ kubectl logs -n genai job/rag-ingest-manual --tail=5
 | Chroma vectors + docs | `rag-data` (Filestore, RWX) | Shared by rag-service and ingest |
 
 ```bash
-kubectl -n genai get pvc -o custom-columns=\
+kubectl -n rag-llm-langchain get pvc -o custom-columns=\
   "NAME:.metadata.name,SC:.spec.storageClassName,CAP:.spec.resources.requests.storage"
 ```
 
@@ -177,74 +177,74 @@ kubectl -n genai get pvc -o custom-columns=\
 
 ## 1. gateway (Deployment, FastAPI, :80)
 ```bash
-kubectl -n genai describe deploy gateway
-kubectl -n genai logs deploy/gateway --tail=5
+kubectl -n rag-llm-langchain describe deploy gateway
+kubectl -n rag-llm-langchain logs deploy/gateway --tail=5
 ```
 
 ## 2. rag-service (Deployment, FastAPI, :8080)
 ```bash
-kubectl -n genai describe deploy rag-service
-kubectl -n genai logs deploy/rag-service --tail=5
+kubectl -n rag-llm-langchain describe deploy rag-service
+kubectl -n rag-llm-langchain logs deploy/rag-service --tail=5
 ```
 
 ## 3. serving-llm (Deployment — Ollama :8000 / vLLM :8000)
 ```bash
-kubectl -n genai describe deploy serving-llm
-kubectl -n genai logs deploy/serving-llm --tail=5
+kubectl -n rag-llm-langchain describe deploy serving-llm
+kubectl -n rag-llm-langchain logs deploy/serving-llm --tail=5
 ```
 
 ## 4. serving-embedding (Deployment — TEI, :8001)
 ```bash
-kubectl -n genai describe deploy serving-embedding
+kubectl -n rag-llm-langchain describe deploy serving-embedding
 ```
 
 ## 5. rag-ingest (CronJob, every 6h)
 ```bash
-kubectl -n genai get cronjob rag-ingest
-kubectl create job --from=cronjob/rag-ingest rag-ingest-manual -n genai
-kubectl -n genai logs job/rag-ingest-manual --tail=5
+kubectl -n rag-llm-langchain get cronjob rag-ingest
+kubectl create job --from=cronjob/rag-ingest rag-ingest-manual -n rag-llm-langchain
+kubectl -n rag-llm-langchain logs job/rag-ingest-manual --tail=5
 ```
 
 ## 6. Chroma vector database (on `rag-data` PVC)
 ```bash
-R=$(kubectl get pod -n genai -l app=rag-service -o jsonpath='{.items[0].metadata.name}')
-kubectl exec -n genai "$R" -- python -c \
+R=$(kubectl get pod -n rag-llm-langchain -l app=rag-service -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -n rag-llm-langchain "$R" -- python -c \
   "from config import get_store; print('count:', get_store()._collection.count())"
 ```
 
 ## 7. model-store / embed-store (PVCs, premium-rwo)
 ```bash
-kubectl -n genai get pvc model-store embed-store
+kubectl -n rag-llm-langchain get pvc model-store embed-store
 ```
 
 ## 8. rag-data (PVC — Filestore / NFS, RWX)
 ```bash
-kubectl -n genai get pvc rag-data
+kubectl -n rag-llm-langchain get pvc rag-data
 ```
 
 ## 9. gateway-lb (Service, type: LoadBalancer)
 ```bash
-kubectl -n genai get svc gateway-lb
+kubectl -n rag-llm-langchain get svc gateway-lb
 ```
 
-## 10. Artifact Registry repo `genai`
+## 10. Artifact Registry repo `rag-llm-langchain`
 ```bash
 gcloud artifacts docker images list \
-  us-central1-docker.pkg.dev/aiml-project-idp/genai
+  us-central1-docker.pkg.dev/rag-llm-langchain/rag-llm-langchain
 ```
 
 ## 11. model-loader (initContainer image)
 ```bash
-kubectl -n genai get pod -l app=serving-llm -o jsonpath='{.items[0].spec.initContainers[*].name}'
+kubectl -n rag-llm-langchain get pod -l app=serving-llm -o jsonpath='{.items[0].spec.initContainers[*].name}'
 ```
 
 ## 12. GKE node pools (cpu-pool / gpu-pool)
 ```bash
-gcloud container node-pools list --cluster genai-cluster --region=us-central1
+gcloud container node-pools list --cluster rag-llm-langchain-cluster --region=us-central1
 ```
 
 ## 13. Monitoring, secrets, and namespaces
 ```bash
-kubectl -n genai get secrets
-kubectl -n genai get pods --field-selector=status.phase!=Running
+kubectl -n rag-llm-langchain get secrets
+kubectl -n rag-llm-langchain get pods --field-selector=status.phase!=Running
 ```

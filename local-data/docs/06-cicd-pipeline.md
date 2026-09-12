@@ -41,21 +41,21 @@ gcloud iam service-accounts create github-actions \
 
 ```bash
 gcloud iam service-accounts add-iam-policy-binding \
-  github-actions@aiml-project-idp.iam.gserviceaccount.com \
+  github-actions@rag-llm-langchain.iam.gserviceaccount.com \
   --role="roles/iam.workloadIdentityUser" \
-  --member="principalSet://iam.googleapis.com/projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/github-pool/attribute.repository/premrasapalli/gke-genai-deployment"
+  --member="principalSet://iam.googleapis.com/projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/github-pool/attribute.repository/premrasapalli/rag-llm-langchain-deploy"
 ```
 
 ### 1.5 Grant token-creator + Artifact Registry writer
 
 ```bash
-gcloud projects add-iam-policy-binding aiml-project-idp \
-  --member="serviceAccount:github-actions@aiml-project-idp.iam.gserviceaccount.com" \
+gcloud projects add-iam-policy-binding rag-llm-langchain \
+  --member="serviceAccount:github-actions@rag-llm-langchain.iam.gserviceaccount.com" \
   --role="roles/iam.serviceAccountTokenCreator"
 
-gcloud artifacts repositories add-iam-policy-binding genai \
+gcloud artifacts repositories add-iam-policy-binding rag-llm-langchain \
   --location=us-central1 \
-  --member="serviceAccount:github-actions@aiml-project-idp.iam.gserviceaccount.com" \
+  --member="serviceAccount:github-actions@rag-llm-langchain.iam.gserviceaccount.com" \
   --role="roles/artifactregistry.writer"
 ```
 
@@ -75,9 +75,9 @@ gh variable set WIF_PROVIDER \
   --body "projects/784802248985/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
 
 gh variable set WIF_SERVICE_ACCOUNT \
-  --body "github-actions@aiml-project-idp.iam.gserviceaccount.com"
+  --body "github-actions@rag-llm-langchain.iam.gserviceaccount.com"
 
-gh secret set PROJECT_ID --body "aiml-project-idp"
+gh secret set PROJECT_ID --body "rag-llm-langchain"
 ```
 
 > **The gotcha we hit:** these must be repository **Variables** (not Secrets)
@@ -153,7 +153,7 @@ gh run view --log | grep "Authenticating to Google Cloud"
 
 ```bash
 gcloud artifacts docker images list \
-  us-central1-docker.pkg.dev/aiml-project-idp/genai \
+  us-central1-docker.pkg.dev/rag-llm-langchain/rag-llm-langchain \
   --sort-by=UPDATE_TIME | head -10
 # gateway:1.0.0, rag:1.0.0, model-loader:1.0.0 with recent timestamps
 ```
@@ -161,9 +161,9 @@ gcloud artifacts docker images list \
 ### 4.3 Pods picked up the new image
 
 ```bash
-kubectl -n genai get pods -o wide
-kubectl -n genai describe deploy gateway | grep -A5 Image
-# Image: us-central1-docker.pkg.dev/aiml-project-idp/genai/gateway:1.0.0
+kubectl -n rag-llm-langchain get pods -o wide
+kubectl -n rag-llm-langchain describe deploy gateway | grep -A5 Image
+# Image: us-central1-docker.pkg.dev/rag-llm-langchain/rag-llm-langchain/gateway:1.0.0
 ```
 
 ### 4.4 Health check from the public IP
@@ -195,7 +195,7 @@ gcloud builds submit --region=us-central1 --config=cloudbuild.yaml .
 kubectl apply -k k8s/overlays/prod
 
 # Force new pods to pull the fresh image
-kubectl -n genai rollout restart deploy/gateway deploy/rag-service \
+kubectl -n rag-llm-langchain rollout restart deploy/gateway deploy/rag-service \
   deploy/serving-llm deploy/serving-embedding
 ```
 
@@ -205,8 +205,8 @@ kubectl -n genai rollout restart deploy/gateway deploy/rag-service \
 
 ```bash
 # Roll back to previous image tag by editing the overlay
-kubectl -n genai rollout undo deploy/gateway
-kubectl -n genai rollout undo deploy/rag-service
+kubectl -n rag-llm-langchain rollout undo deploy/gateway
+kubectl -n rag-llm-langchain rollout undo deploy/rag-service
 
 # Or force a previous git commit
 git checkout <commit-sha> -- k8s/
@@ -218,7 +218,7 @@ kubectl apply -k k8s/overlays/prod
 ## What actually happened in this project
 
 1. Edited `rag/requirements.txt` (chromadb pin) and pushed.
-2. GitHub Actions (WIF auth) built `genai/rag:1.0.0` for amd64, pushed to
+2. GitHub Actions (WIF auth) built `rag-llm-langchain/rag:1.0.0` for amd64, pushed to
    Artifact Registry.
 3. `kubectl rollout restart deploy/rag-service` (imagePullPolicy: `Always`)
    pulled the fresh tag.
@@ -233,9 +233,9 @@ kubectl apply -k k8s/overlays/prod
 |-------|-------|
 | Identity Pool | `github-pool` (global) |
 | OIDC Provider | `github-provider` |
-| Service Account | `github-actions@aiml-project-idp.iam.gserviceaccount.com` |
+| Service Account | `github-actions@rag-llm-langchain.iam.gserviceaccount.com` |
 | WIF Roles | `workloadIdentityUser` + `serviceAccountTokenCreator` |
-| Registry Role | `artifactregistry.writer` on `genai` |
+| Registry Role | `artifactregistry.writer` on `rag-llm-langchain` |
 | GitHub Variables | `WIF_PROVIDER`, `WIF_SERVICE_ACCOUNT` |
 | GitHub Secret | `PROJECT_ID` |
 

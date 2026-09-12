@@ -13,7 +13,7 @@ INDEX_HTML = """<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>GKE GenAI Playground</title>
+<title>RAG + LLM Playground</title>
 <style>
 :root { color-scheme: light dark; }
 body { font-family: -apple-system, system-ui, sans-serif; max-width: 720px;
@@ -31,7 +31,7 @@ button.secondary { background: #666; }
 </style>
 </head>
 <body>
-<h1>GKE GenAI Playground</h1>
+<h1>RAG + LLM Playground</h1>
 <div class="tabs">
   <button id="tab-chat" class="active" onclick="show('chat')">Chat</button>
   <button id="tab-rag" onclick="show('rag')">RAG (ask docs)</button>

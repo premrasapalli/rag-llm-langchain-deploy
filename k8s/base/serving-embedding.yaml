@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: serving-embedding
-  namespace: genai
+  namespace: rag-llm-langchain
   labels:
     app: serving-embedding
 spec:
@@ -20,7 +20,7 @@ spec:
         fsGroupChangePolicy: Always
       initContainers:
         - name: load-model
-          image: genai/model-loader:1.0.0
+          image: rag-llm-langchain/model-loader:1.0.0
           imagePullPolicy: Always
           env:
             - name: HF_MODEL

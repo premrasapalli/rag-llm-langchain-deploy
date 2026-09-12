@@ -12,12 +12,12 @@ resources:
 #   - Confirm HF_MODEL fits the GPU (see patch in overlays/gpu) and that the
 #     gpu-pool node pool exists.
 images:
-  - name: genai/model-loader
-    newName: us-central1-docker.pkg.dev/aiml-project-idp/genai/model-loader
+  - name: rag-llm-langchain/model-loader
+    newName: us-central1-docker.pkg.dev/rag-llm-langchain/rag-llm-langchain/model-loader
     newTag: "1.0.0"
-  - name: genai/rag
-    newName: us-central1-docker.pkg.dev/aiml-project-idp/genai/rag
+  - name: rag-llm-langchain/rag
+    newName: us-central1-docker.pkg.dev/rag-llm-langchain/rag-llm-langchain/rag
     newTag: "1.0.0"
-  - name: genai/gateway
-    newName: us-central1-docker.pkg.dev/aiml-project-idp/genai/gateway
+  - name: rag-llm-langchain/gateway
+    newName: us-central1-docker.pkg.dev/rag-llm-langchain/rag-llm-langchain/gateway
     newTag: "1.0.0"

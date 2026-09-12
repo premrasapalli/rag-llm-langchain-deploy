@@ -38,7 +38,7 @@ google-github-actions/auth failed with: the GitHub Action workflow must specify 
 
 4. Grant Workload Identity User Role:
    ```bash
-   gcloud iam service-accounts add-iam-policy-binding github-actions@aiml-project-idp.iam.gserviceaccount.com \
+   gcloud iam service-accounts add-iam-policy-binding github-actions@rag-llm-langchain.iam.gserviceaccount.com \
      --role="roles/iam.workloadIdentityUser" \
      --member="principalSet://iam.googleapis.com/projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/github-pool/attribute.repository/YOUR_GITHUB_REPO"
    ```
@@ -53,7 +53,7 @@ google-github-actions/auth failed with: the GitHub Action workflow must specify 
 
 6. Add GitHub repository variables (Settings → Secrets and variables → Actions → Variables tab):
    - `WIF_PROVIDER`: (value from step 5)
-   - `WIF_SERVICE_ACCOUNT`: `github-actions@aiml-project-idp.iam.gserviceaccount.com`
+   - `WIF_SERVICE_ACCOUNT`: `github-actions@rag-llm-langchain.iam.gserviceaccount.com`
 
 ---
 
@@ -67,11 +67,11 @@ Permission 'iam.serviceAccounts.getAccessToken' denied on resource
 **Cause:** Service account lacks `iam.serviceAccountTokenCreator` role.
 
 **Solution:**
-1. Go to: https://console.cloud.google.com/iam-admin/serviceaccounts?project=aiml-project-idp
-2. Click on `github-actions@aiml-project-idp.iam.gserviceaccount.com`
+1. Go to: https://console.cloud.google.com/iam-admin/serviceaccounts?project=rag-llm-langchain
+2. Click on `github-actions@rag-llm-langchain.iam.gserviceaccount.com`
 3. Click **Permissions** tab
 4. Click **Grant Access**
-5. Add principal: `principalSet://iam.googleapis.com/projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/github-pool/attribute.repository/premrasapalli/gke-genai-deployment`
+5. Add principal: `principalSet://iam.googleapis.com/projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/github-pool/attribute.repository/premrasapalli/rag-llm-langchain-deploy`
 6. Select role: **Service Account Token Creator**
 7. Click **Save**
 
@@ -81,7 +81,7 @@ Permission 'iam.serviceAccounts.getAccessToken' denied on resource
 
 **Error:**
 ```
-ERROR: failed to build: invalid tag "us-central1-docker.pkg.dev//genai/model-loader:1.0.0": invalid reference format
+ERROR: failed to build: invalid tag "us-central1-docker.pkg.dev//rag-llm-langchain/model-loader:1.0.0": invalid reference format
 ```
 
 **Cause:** `PROJECT_ID` secret not set, causing double slashes `//` in image tag.
@@ -89,7 +89,7 @@ ERROR: failed to build: invalid tag "us-central1-docker.pkg.dev//genai/model-loa
 **Solution:**
 Add `PROJECT_ID` secret in GitHub (Settings → Secrets and variables → Actions → Secrets tab):
 - Name: `PROJECT_ID`
-- Value: `aiml-project-idp`
+- Value: `rag-llm-langchain`
 
 ---
 
@@ -104,9 +104,9 @@ Permission 'artifactregistry.repositories.uploadArtifacts' denied on resource
 
 **Solution:**
 ```bash
-gcloud artifacts repositories add-iam-policy-binding genai \
+gcloud artifacts repositories add-iam-policy-binding rag-llm-langchain \
   --location=us-central1 \
-  --member="serviceAccount:github-actions@aiml-project-idp.iam.gserviceaccount.com" \
+  --member="serviceAccount:github-actions@rag-llm-langchain.iam.gserviceaccount.com" \
   --role="roles/artifactregistry.writer"
 ```
 
@@ -117,13 +117,13 @@ gcloud artifacts repositories add-iam-policy-binding genai \
 | Type | Name | Value |
 |------|------|-------|
 | Variable | `WIF_PROVIDER` | `projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/github-pool/providers/github-provider` |
-| Variable | `WIF_SERVICE_ACCOUNT` | `github-actions@aiml-project-idp.iam.gserviceaccount.com` |
-| Secret | `PROJECT_ID` | `aiml-project-idp` |
+| Variable | `WIF_SERVICE_ACCOUNT` | `github-actions@rag-llm-langchain.iam.gserviceaccount.com` |
+| Secret | `PROJECT_ID` | `rag-llm-langchain` |
 
 ## Required GCP IAM Roles
 
 | Service Account | Role | Scope |
 |-----------------|------|-------|
-| `github-actions@aiml-project-idp.iam.gserviceaccount.com` | `roles/iam.workloadIdentityUser` | Project |
-| `github-actions@aiml-project-idp.iam.gserviceaccount.com` | `roles/iam.serviceAccountTokenCreator` | Project |
-| `github-actions@aiml-project-idp.iam.gserviceaccount.com` | `roles/artifactregistry.writer` | `genai` repository |
+| `github-actions@rag-llm-langchain.iam.gserviceaccount.com` | `roles/iam.workloadIdentityUser` | Project |
+| `github-actions@rag-llm-langchain.iam.gserviceaccount.com` | `roles/iam.serviceAccountTokenCreator` | Project |
+| `github-actions@rag-llm-langchain.iam.gserviceaccount.com` | `roles/artifactregistry.writer` | `rag-llm-langchain` repository |

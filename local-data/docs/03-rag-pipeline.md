@@ -31,23 +31,23 @@ User question ---> embed the question ----------------------->|
 
 ```bash
 # Create the bucket
-gcloud storage buckets create gs://aiml-project-idp-rag-docs --location=us-central1
+gcloud storage buckets create gs://rag-llm-langchain-docs --location=us-central1
 
 # Upload the knowledge base docs
-gcloud storage cp -r local-data/docs gs://aiml-project-idp-rag-docs/docs
+gcloud storage cp -r local-data/docs gs://rag-llm-langchain-docs/docs
 
 # Grant the node SA read access (for the seed-docs initContainer)
 gsutil iam ch \
-  serviceAccount:genai-gke@aiml-project-idp.iam.gserviceaccount.com:objectViewer \
-  gs://aiml-project-idp-rag-docs
+  serviceAccount:rag-llm-langchain-gke@rag-llm-langchain.iam.gserviceaccount.com:objectViewer \
+  gs://rag-llm-langchain-docs
 ```
 
 ## Step 2: Run a manual ingest
 
 ```bash
-kubectl create job --from=cronjob/rag-ingest rag-ingest-manual -n genai
-kubectl wait --for=condition=complete job/rag-ingest-manual -n genai --timeout=300s
-kubectl logs -n genai job/rag-ingest-manual --tail=10
+kubectl create job --from=cronjob/rag-ingest rag-ingest-manual -n rag-llm-langchain
+kubectl wait --for=condition=complete job/rag-ingest-manual -n rag-llm-langchain --timeout=300s
+kubectl logs -n rag-llm-langchain job/rag-ingest-manual --tail=10
 ```
 
 Expected output:
@@ -62,14 +62,14 @@ you change docs.
 ## Step 3: Verify the vector store persisted
 
 ```bash
-R=$(kubectl get pod -n genai -l app=rag-service -o jsonpath='{.items[0].metadata.name}')
+R=$(kubectl get pod -n rag-llm-langchain -l app=rag-service -o jsonpath='{.items[0].metadata.name}')
 
 # Collection count must be > 0
-kubectl exec -n genai "$R" -- python -c \
+kubectl exec -n rag-llm-langchain "$R" -- python -c \
   "from config import get_store; print('count:', get_store()._collection.count())"
 
 # chroma.sqlite3 file must exist (proves persistence, not in-memory)
-kubectl exec -n genai "$R" -- ls /data/chroma
+kubectl exec -n rag-llm-langchain "$R" -- ls /data/chroma
 ```
 
 If count is 0 or `chroma.sqlite3` is missing, see the chromadb pin gotcha below.
@@ -77,7 +77,7 @@ If count is 0 or `chroma.sqlite3` is missing, see the chromadb pin gotcha below.
 ## Step 4: Ask a grounded question
 
 ```bash
-IP=$(kubectl -n genai get svc gateway-lb -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+IP=$(kubectl -n rag-llm-langchain get svc gateway-lb -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 curl -s -X POST http://$IP/rag -H 'Content-Type: application/json' \
   -d '{"query":"What endpoints does the API gateway expose?"}' | python3 -m json.tool
 ```
@@ -98,7 +98,7 @@ The `rag-ingest` CronJob runs `python -m ingest --dir /data/docs`:
 
 ```bash
 # Inspect what was seeded
-kubectl -n genai get cronjob rag-ingest -o yaml | grep -A5 DOCS_GCS_URI
+kubectl -n rag-llm-langchain get cronjob rag-ingest -o yaml | grep -A5 DOCS_GCS_URI
 ```
 
 ## The seed-docs initContainer
@@ -122,8 +122,8 @@ At query time (`rag/retriever.py`):
 
 ```bash
 # Verify retrieval has data to find
-R=$(kubectl get pod -n genai -l app=rag-service -o jsonpath='{.items[0].metadata.name}')
-kubectl exec -n genai "$R" -- python -c "
+R=$(kubectl get pod -n rag-llm-langchain -l app=rag-service -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -n rag-llm-langchain "$R" -- python -c "
 from config import get_store
 s = get_store()
 print('total chunks in collection:', s._collection.count())
@@ -149,7 +149,7 @@ for i, r in enumerate(results):
 
 ```bash
 # Full end-to-end RAG test from inside the cluster
-kubectl -n genai exec deploy/rag-service -- python3 -c "
+kubectl -n rag-llm-langchain exec deploy/rag-service -- python3 -c "
 from chain import rag_answer
 print(rag_answer('What is RAG?'))
 "
@@ -168,7 +168,7 @@ when paired with `chromadb>=0.5`. Signs:
 **Fix:** this repo pins `chromadb==0.4.24`. Verify the pin:
 
 ```bash
-kubectl -n genai exec deploy/rag-service -- pip show chromadb | grep Version
+kubectl -n rag-llm-langchain exec deploy/rag-service -- pip show chromadb | grep Version
 # Expected: Version: 0.4.24
 ```
 
@@ -179,9 +179,9 @@ After a rebuild, delete old ingest jobs and re-ingest.
 ## Re-index after changing documents
 
 ```bash
-kubectl create job --from=cronjob/rag-ingest rag-ingest-manual -n genai
-kubectl wait --for=condition=complete job/rag-ingest-manual -n genai --timeout=300s
-kubectl logs -n genai job/rag-ingest-manual --tail=5
+kubectl create job --from=cronjob/rag-ingest rag-ingest-manual -n rag-llm-langchain
+kubectl wait --for=condition=complete job/rag-ingest-manual -n rag-llm-langchain --timeout=300s
+kubectl logs -n rag-llm-langchain job/rag-ingest-manual --tail=5
 ```
 
 ---
@@ -193,10 +193,10 @@ what the serving backend exposes:
 
 ```bash
 # What the LLM serves
-kubectl -n genai exec deploy/serving-llm -- curl -s http://localhost:8000/v1/models
+kubectl -n rag-llm-langchain exec deploy/serving-llm -- curl -s http://localhost:8000/v1/models
 
 # What the rag-service uses (must match above)
-kubectl -n genai get deploy rag-service -o jsonpath='{.spec.template.spec.containers[0].env}' | python3 -c "import sys,json; [print(e['name'], e['value']) for e in json.load(sys.stdin) if e['name']=='LLM_MODEL']"
+kubectl -n rag-llm-langchain get deploy rag-service -o jsonpath='{.spec.template.spec.containers[0].env}' | python3 -c "import sys,json; [print(e['name'], e['value']) for e in json.load(sys.stdin) if e['name']=='LLM_MODEL']"
 ```
 
 Mismatch = `404 model not found` from the LLM API.

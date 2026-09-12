@@ -1,6 +1,6 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-namespace: genai
+namespace: rag-llm-langchain
 resources:
   - namespace.yaml
   - storageclass-filestore.yaml
@@ -19,17 +19,17 @@ resources:
   - svc-gateway.yaml
   - ingress.yaml
   - ingest-cronjob.yaml
-# Registry note: the base manifests reference bare image names (genai/<name>).
+# Registry note: the base manifests reference bare image names (rag-llm-langchain/<name>).
 # The kustomize `images` transform here only pins tags; the real Artifact
-# Registry (REGION-docker.pkg.dev/PROJECT_ID/genai) is injected by the prod
+# Registry (REGION-docker.pkg.dev/PROJECT_ID/rag-llm-langchain) is injected by the prod
 # overlay (k8s/overlays/prod) so the registry is set in one place on deploy.
 #
 # Deploy via:
 #   kubectl apply -k k8s/overlays/prod     # -> real Artifact Registry
 images:
-  - name: genai/model-loader
+  - name: rag-llm-langchain/model-loader
     newTag: "1.0.0"
-  - name: genai/rag
+  - name: rag-llm-langchain/rag
     newTag: "1.0.0"
-  - name: genai/gateway
+  - name: rag-llm-langchain/gateway
     newTag: "1.0.0"

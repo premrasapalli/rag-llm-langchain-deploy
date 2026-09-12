@@ -3,7 +3,7 @@
 #   1. Creates the GCS bucket used as the (remote) state backend.
 #   2. Enables the APIs the cluster needs.
 #
-# The main `terraform/` config reads bucket `genai-terraform-state` in its
+# The main `terraform/` config reads bucket `rag-llm-langchain-terraform-state` in its
 # backend block, so this bucket MUST exist before `terraform init` there.
 # This config deliberately has no backend block.
 
@@ -20,7 +20,7 @@ terraform {
 variable "project_id" {
   type        = string
   description = "GCP project ID"
-  default     = "aiml-project-idp"
+  default     = "rag-llm-langchain"
 }
 
 variable "region" {
@@ -32,7 +32,7 @@ variable "region" {
 variable "state_bucket" {
   type        = string
   description = "GCS bucket name for Terraform remote state"
-  default     = "aiml-project-idp-genai-tfstate"
+  default     = "rag-llm-langchain-tfstate"
 }
 
 provider "google" {
@@ -61,7 +61,7 @@ resource "google_storage_bucket" "terraform_state" {
 resource "google_project_service" "required" {
   for_each = toset([
     "container.googleapis.com",        # GKE
-    "artifactregistry.googleapis.com", # image repo (genai)
+    "artifactregistry.googleapis.com", # image repo (rag-llm-langchain)
     "compute.googleapis.com",          # node VMs / load balancer / addresses
     "storage-api.googleapis.com",      # GCS / devstorage scope
     "monitoring.googleapis.com",       # alerting policies

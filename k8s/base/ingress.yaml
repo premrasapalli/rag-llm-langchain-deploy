@@ -1,16 +1,16 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: genai-gateway
-  namespace: genai
+  name: rag-llm-langchain-gateway
+  namespace: rag-llm-langchain
   annotations:
     # For production with a real domain:
     #   - Replace the HTTP-only setup below with HTTPS and pin the ingress to a
     #     reserved global static IP (Terraform `google_compute_global_address`).
     #   - Reference the static IP by name:
-    #       kubernetes.io/ingress.global-static-ip-name: genai-gateway-ip
+    #       kubernetes.io/ingress.global-static-ip-name: rag-llm-langchain-gateway-ip
     #   - Reference a ManagedCertificate CR (see managed-cert.yaml in this dir):
-    #       networking.gke.io/managed-certificates: genai-gateway-cert
+    #       networking.gke.io/managed-certificates: rag-llm-langchain-gateway-cert
     #   - Force redirect to HTTPS:
     #       kubernetes.io/ingress.allow-http: "false"
     # The HTTP-only defaults below are appropriate for testing only.

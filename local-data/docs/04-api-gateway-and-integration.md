@@ -11,17 +11,17 @@ gateway and the full service-to-service integration.
 
 ```bash
 kubectl apply -k k8s/overlays/prod
-kubectl -n genai rollout status deploy/gateway
+kubectl -n rag-llm-langchain rollout status deploy/gateway
 ```
 
 ## Verify it is alive
 
 ```bash
-kubectl -n genai get deploy gateway
-kubectl -n genai logs deploy/gateway --tail=10
+kubectl -n rag-llm-langchain get deploy gateway
+kubectl -n rag-llm-langchain logs deploy/gateway --tail=10
 
 # Port-forward and health-check
-kubectl port-forward -n genai svc/gateway 8080:80 >/dev/null 2>&1 &
+kubectl port-forward -n rag-llm-langchain svc/gateway 8080:80 >/dev/null 2>&1 &
 PF=$!; sleep 3
 curl -s http://localhost:8080/healthz    # {"status":"ok"}
 curl -s http://localhost:8080/models     # qwen2.5:0.5b
@@ -31,7 +31,7 @@ kill $PF
 ## Test every endpoint
 
 ```bash
-kubectl port-forward -n genai svc/gateway 8080:80 >/dev/null 2>&1 &
+kubectl port-forward -n rag-llm-langchain svc/gateway 8080:80 >/dev/null 2>&1 &
 PF=$!; sleep 3
 
 # GET /healthz
@@ -56,7 +56,7 @@ kill $PF
 ## Gateway environment configuration
 
 ```bash
-kubectl -n genai get deploy gateway -o jsonpath='{.spec.template.spec.containers[0].env}' | python3 -m json.tool
+kubectl -n rag-llm-langchain get deploy gateway -o jsonpath='{.spec.template.spec.containers[0].env}' | python3 -m json.tool
 ```
 
 Key vars:
@@ -83,7 +83,7 @@ Key vars:
 
 ```bash
 # See all services and their IPs
-kubectl -n genai get svc
+kubectl -n rag-llm-langchain get svc
 ```
 
 ## How they discover each other
@@ -92,9 +92,9 @@ Kubernetes gives each service a stable DNS name equal to its service name:
 
 ```bash
 # Test DNS resolution from inside the cluster
-kubectl -n genai exec deploy/gateway -- nslookup serving-llm
-kubectl -n genai exec deploy/gateway -- nslookup rag-service
-kubectl -n genai exec deploy/gateway -- nslookup serving-embedding
+kubectl -n rag-llm-langchain exec deploy/gateway -- nslookup serving-llm
+kubectl -n rag-llm-langchain exec deploy/gateway -- nslookup rag-service
+kubectl -n rag-llm-langchain exec deploy/gateway -- nslookup serving-embedding
 ```
 
 ---
@@ -114,11 +114,11 @@ Client ──► gateway (/chat)
 **Verify live:**
 
 ```bash
-kubectl port-forward -n genai svc/gateway 8080:80 >/dev/null 2>&1 &
+kubectl port-forward -n rag-llm-langchain svc/gateway 8080:80 >/dev/null 2>&1 &
 PF=$!; sleep 3
 
 # Watch gateway logs in another terminal — you will see the LLM call
-kubectl -n genai logs deploy/gateway -f &
+kubectl -n rag-llm-langchain logs deploy/gateway -f &
 LOG=$!
 
 curl -s -X POST http://localhost:8080/chat \
@@ -155,11 +155,11 @@ Client ──► gateway (/rag)
 **Verify live:**
 
 ```bash
-kubectl port-forward -n genai svc/gateway 8080:80 >/dev/null 2>&1 &
+kubectl port-forward -n rag-llm-langchain svc/gateway 8080:80 >/dev/null 2>&1 &
 PF=$!; sleep 3
 
 # Watch rag-service logs — you will see embed -> retrieve -> generate
-kubectl -n genai logs deploy/rag-service -f &
+kubectl -n rag-llm-langchain logs deploy/rag-service -f &
 LOG=$!
 
 curl -s -X POST http://localhost:8080/rag \
@@ -182,8 +182,8 @@ rag-ingest (python -m ingest):                ▼
 
 ```bash
 # Trigger a manual ingest and watch the flow
-kubectl create job --from=cronjob/rag-ingest rag-ingest-manual -n genai
-kubectl -n genai logs -f job/rag-ingest-manual
+kubectl create job --from=cronjob/rag-ingest rag-ingest-manual -n rag-llm-langchain
+kubectl -n rag-llm-langchain logs -f job/rag-ingest-manual
 ```
 
 ---
@@ -192,15 +192,15 @@ kubectl -n genai logs -f job/rag-ingest-manual
 
 ```bash
 # Rule 1: embedding model — same at ingest AND query
-kubectl -n genai get cronjob rag-ingest -o jsonpath='{.spec.jobTemplate.spec.template.spec.containers[0].env}' | grep EMBEDDING_MODEL
-kubectl -n genai get deploy rag-service -o jsonpath='{.spec.template.spec.containers[0].env}' | grep EMBEDDING_MODEL
+kubectl -n rag-llm-langchain get cronjob rag-ingest -o jsonpath='{.spec.jobTemplate.spec.template.spec.containers[0].env}' | grep EMBEDDING_MODEL
+kubectl -n rag-llm-langchain get deploy rag-service -o jsonpath='{.spec.template.spec.containers[0].env}' | grep EMBEDDING_MODEL
 
 # Rule 2: LLM model name — gateway and rag-service match the served model
-kubectl -n genai get deploy gateway -o jsonpath='{.spec.template.spec.containers[0].env}' | grep LLM_MODEL
-kubectl -n genai get deploy rag-service -o jsonpath='{.spec.template.spec.containers[0].env}' | grep LLM_MODEL
+kubectl -n rag-llm-langchain get deploy gateway -o jsonpath='{.spec.template.spec.containers[0].env}' | grep LLM_MODEL
+kubectl -n rag-llm-langchain get deploy rag-service -o jsonpath='{.spec.template.spec.containers[0].env}' | grep LLM_MODEL
 
 # Rule 3: service URLs — point at the right Kubernetes service names
-kubectl -n genai get deploy gateway -o jsonpath='{.spec.template.spec.containers[0].env}' | grep -E 'LLM_URL|RAG_URL'
+kubectl -n rag-llm-langchain get deploy gateway -o jsonpath='{.spec.template.spec.containers[0].env}' | grep -E 'LLM_URL|RAG_URL'
 ```
 
 ---
@@ -212,4 +212,4 @@ kubectl -n genai get deploy gateway -o jsonpath='{.spec.template.spec.containers
 | `/rag` answers generically with no docs | `kubectl exec deploy/rag-service -- python -c "from config import get_store; print(get_store()._collection.count())"` — count must be > 0 |
 | `404 model not found` from `/chat` | `LLM_MODEL` env var does not match served model — check both |
 | `ImagePullBackOff` on every pod | You applied `k8s/base` not `k8s/overlays/prod` — reapply the overlay |
-| `Connection refused` from gateway -> LLM | `serving-llm` pod is not ready — `kubectl -n genai get pods` |
+| `Connection refused` from gateway -> LLM | `serving-llm` pod is not ready — `kubectl -n rag-llm-langchain get pods` |

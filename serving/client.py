@@ -4,7 +4,7 @@ import time
 import requests
 
 BASE = os.environ.get("VLLM_URL", "http://localhost:8000/v1")
-MODEL = os.environ.get("VLLM_MODEL", "genai-model")
+MODEL = os.environ.get("VLLM_MODEL", "rag-llm-langchain-model")
 
 
 def wait_ready(timeout: int = 600) -> bool:

@@ -1,6 +1,6 @@
 terraform {
   backend "gcs" {
-    bucket = "aiml-project-idp-genai-tfstate"
+    bucket = "rag-llm-langchain-tfstate"
     prefix = "terraform/state"
   }
 }

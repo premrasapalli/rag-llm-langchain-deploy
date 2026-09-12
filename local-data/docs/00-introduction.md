@@ -1,6 +1,6 @@
-# GKE GenAI Deployment — Introduction & Overview
+# RAG + LLM LangChain Deployment on GKE — Introduction & Overview
 
-This project is an end-to-end Generative AI (GenAI) platform that runs on Google
+This project is an end-to-end RAG + LLM platform that runs on Google
 Kubernetes Engine (GKE). It lets you chat with a Large Language Model (LLM),
 ask questions grounded in your own documents, and manage the whole thing with
 version-controlled infrastructure and code.
@@ -45,10 +45,10 @@ After completing `07-implementation-guide.md`, confirm everything works:
 
 ```bash
 # Check all pods are running
-kubectl -n genai get pods
+kubectl -n rag-llm-langchain get pods
 
 # Health check via port-forward
-kubectl port-forward -n genai svc/gateway 8080:80 >/dev/null & PF=$!
+kubectl port-forward -n rag-llm-langchain svc/gateway 8080:80 >/dev/null & PF=$!
 sleep 5
 curl -s localhost:8080/healthz       # {"status":"ok"}
 curl -s localhost:8080/models        # qwen2.5:0.5b

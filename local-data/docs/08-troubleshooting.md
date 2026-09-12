@@ -35,11 +35,11 @@ Symptom: various "permission" / "denied" errors across the project.
 **Fix:**
 
 ```bash
-gcloud billing projects link aiml-project-idp \
+gcloud billing projects link rag-llm-langchain \
   --billing-account=01716C-ECBC7F-34FFF7
 
 # Verify
-gcloud billing projects describe aiml-project-idp
+gcloud billing projects describe rag-llm-langchain
 # billingEnabled: true
 ```
 
@@ -77,10 +77,10 @@ Terraform says the pool exists but GKE shows ERROR/lost.
 
 ```bash
 # Refresh state
-gcloud container node-pools list --cluster genai-cluster --region us-central1
+gcloud container node-pools list --cluster rag-llm-langchain-cluster --region us-central1
 
 # Delete the errored pool through GKE
-gcloud container node-pools delete gpu-pool --cluster genai-cluster --region us-central1
+gcloud container node-pools delete gpu-pool --cluster rag-llm-langchain-cluster --region us-central1
 
 # Re-apply CPU-only
 terraform apply
@@ -104,24 +104,24 @@ gcloud builds submit --region=us-central1 --config=cloudbuild.yaml .
 
 # Verify the image arch
 gcloud artifacts docker images describe \
-  us-central1-docker.pkg.dev/aiml-project-idp/genai/gateway:1.0.0 \
+  us-central1-docker.pkg.dev/rag-llm-langchain/rag-llm-langchain/gateway:1.0.0 \
   --format="value(summary)"
 # amd64
 ```
 
 ---
 
-## 6. ImagePullBackOff / `docker.io/genai/...` not found
+## 6. ImagePullBackOff / `docker.io/rag-llm-langchain/...` not found
 
 **Root cause:** applied `k8s/base` instead of `k8s/overlays/prod`. Base uses
-short names (`genai/gateway`); the overlay rewrites them to the full registry path.
+short names (`rag-llm-langchain/gateway`); the overlay rewrites them to the full registry path.
 
 **Fix:**
 
 ```bash
 kubectl apply -k k8s/overlays/prod
-kubectl -n genai get pods
-# Pods should start pulling from us-central1-docker.pkg.dev/aiml-project-idp/genai/...
+kubectl -n rag-llm-langchain get pods
+# Pods should start pulling from us-central1-docker.pkg.dev/rag-llm-langchain/rag-llm-langchain/...
 ```
 
 ---
@@ -142,7 +142,7 @@ Rebuild and redeploy:
 
 ```bash
 gcloud builds submit --region=us-central1 --config=cloudbuild.yaml .
-kubectl -n genai rollout restart deploy/gateway
+kubectl -n rag-llm-langchain rollout restart deploy/gateway
 ```
 
 ---
@@ -160,7 +160,7 @@ Failed to infer device type
 ```bash
 # In k8s/base/serving-llm.yaml, ensure the Ollama image is used
 # and the model is qwen2.5:0.5b
-kubectl -n genai logs deploy/serving-llm --tail=5
+kubectl -n rag-llm-langchain logs deploy/serving-llm --tail=5
 # Should show "Listening on" with Ollama
 ```
 
@@ -185,7 +185,7 @@ HF: "relative URL without a base"
 #   HF_HUB_DISABLE_XET=1
 
 # Or preload via model-loader initContainer into a PVC
-kubectl -n genai get pods -l app=serving-llm -o jsonpath='{.items[0].spec.initContainers[*].name}'
+kubectl -n rag-llm-langchain get pods -l app=serving-llm -o jsonpath='{.items[0].spec.initContainers[*].name}'
 ```
 
 ---
@@ -202,7 +202,7 @@ paired with `chromadb>=0.5`. Data is lost on pod restart.
 
 ```bash
 # 1. Verify the chromadb version
-kubectl -n genai exec deploy/rag-service -- pip show chromadb | grep Version
+kubectl -n rag-llm-langchain exec deploy/rag-service -- pip show chromadb | grep Version
 # Must be: 0.4.24
 
 # 2. If wrong, pin it in rag/requirements.txt:
@@ -212,21 +212,21 @@ kubectl -n genai exec deploy/rag-service -- pip show chromadb | grep Version
 gcloud builds submit --region=us-central1 --config=cloudbuild.yaml .
 
 # 4. Restart rag-service
-kubectl -n genai rollout restart deploy/rag-service
+kubectl -n rag-llm-langchain rollout restart deploy/rag-service
 
 # 5. Delete old manual ingest jobs
-kubectl -n genai delete job rag-ingest-manual --ignore-not-found
+kubectl -n rag-llm-langchain delete job rag-ingest-manual --ignore-not-found
 
 # 6. Re-ingest
-kubectl create job --from=cronjob/rag-ingest rag-ingest-manual -n genai
-kubectl wait --for=condition=complete job/rag-ingest-manual -n genai --timeout=300s
+kubectl create job --from=cronjob/rag-ingest rag-ingest-manual -n rag-llm-langchain
+kubectl wait --for=condition=complete job/rag-ingest-manual -n rag-llm-langchain --timeout=300s
 
 # 7. Verify persistence
-R=$(kubectl get pod -n genai -l app=rag-service -o jsonpath='{.items[0].metadata.name}')
-kubectl exec -n genai "$R" -- ls /data/chroma
+R=$(kubectl get pod -n rag-llm-langchain -l app=rag-service -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -n rag-llm-langchain "$R" -- ls /data/chroma
 # chroma.sqlite3 MUST exist
 
-kubectl exec -n genai "$R" -- python -c \
+kubectl exec -n rag-llm-langchain "$R" -- python -c \
   "from config import get_store; print(get_store()._collection.count())"
 # > 0
 ```
@@ -241,11 +241,11 @@ kubectl exec -n genai "$R" -- python -c \
 
 ```bash
 # Seed docs to GCS
-gcloud storage cp -r local-data/docs gs://aiml-project-idp-rag-docs/docs
+gcloud storage cp -r local-data/docs gs://rag-llm-langchain-docs/docs
 
 # Run the ingest job (reads from GCS, writes to PVC directly)
-kubectl create job --from=cronjob/rag-ingest rag-ingest-manual -n genai
-kubectl wait --for=condition=complete job/rag-ingest-manual -n genai --timeout=300s
+kubectl create job --from=cronjob/rag-ingest rag-ingest-manual -n rag-llm-langchain
+kubectl wait --for=condition=complete job/rag-ingest-manual -n rag-llm-langchain --timeout=300s
 ```
 
 ---
@@ -271,7 +271,7 @@ storageclasses.storage.k8s.io "pd-ssd" not found
 
 ```bash
 # Enable Filestore CSI
-gcloud container clusters update genai-cluster --region=us-central1 \
+gcloud container clusters update rag-llm-langchain-cluster --region=us-central1 \
   --update-addons=GcpFilestoreCsiDriver=ENABLED
 
 # Verify storage classes exist
@@ -289,9 +289,9 @@ Symptom: ingress shows no ADDRESS, no forwarding rules for hours.
 **Fix:** use LoadBalancer instead:
 
 ```bash
-kubectl -n genai create service loadbalancer gateway-lb --tcp=80:8080 \
+kubectl -n rag-llm-langchain create service loadbalancer gateway-lb --tcp=80:8080 \
   --dry-run=client -o yaml | kubectl apply -f -
-kubectl -n genai get svc gateway-lb
+kubectl -n rag-llm-langchain get svc gateway-lb
 # EXTERNAL-IP assigned immediately
 ```
 
@@ -306,10 +306,10 @@ http://<node-ip>:30080/healthz times out
 **Fix:** add firewall rule:
 
 ```bash
-gcloud compute firewall-rules create genai-gateway-nodeport \
+gcloud compute firewall-rules create rag-llm-langchain-gateway-nodeport \
   --allow=tcp:30080 \
   --source-ranges=0.0.0.0/0 \
-  --target-tags=$(gcloud compute instances list --filter="name:genai" --format="value(tags.items[0])" | head -1)
+  --target-tags=$(gcloud compute instances list --filter="name:rag-llm-langchain" --format="value(tags.items[0])" | head -1)
 ```
 
 Or just use the LoadBalancer — it sidesteps this entirely.
@@ -321,7 +321,7 @@ Or just use the LoadBalancer — it sidesteps this entirely.
 **Fix:** put port-forward and curl in the same command:
 
 ```bash
-kubectl port-forward -n genai svc/gateway 8080:80 >/dev/null 2>&1 &
+kubectl port-forward -n rag-llm-langchain svc/gateway 8080:80 >/dev/null 2>&1 &
 PF=$!; sleep 3
 curl -s http://localhost:8080/healthz
 kill $PF
@@ -333,18 +333,18 @@ kill $PF
 
 ```bash
 # Pod events (pull errors, start errors)
-kubectl -n genai describe pod <pod-name>
+kubectl -n rag-llm-langchain describe pod <pod-name>
 
 # Recent cluster events
-kubectl -n genai get events --sort-by=.lastTimestamp
+kubectl -n rag-llm-langchain get events --sort-by=.lastTimestamp
 
 # App logs
-kubectl -n genai logs deploy/gateway --tail=20
-kubectl -n genai logs deploy/rag-service --tail=20
-kubectl -n genai logs deploy/serving-llm --tail=20
+kubectl -n rag-llm-langchain logs deploy/gateway --tail=20
+kubectl -n rag-llm-langchain logs deploy/rag-service --tail=20
+kubectl -n rag-llm-langchain logs deploy/serving-llm --tail=20
 
 # Ingest job logs
-kubectl -n genai logs job/rag-ingest-manual --tail=20
+kubectl -n rag-llm-langchain logs job/rag-ingest-manual --tail=20
 
 # Did the image actually build?
 gcloud builds list --limit=5
@@ -356,9 +356,9 @@ gcloud compute target-pools get-health <pool> --region=us-central1
 ## Hygiene after any rebuild
 
 ```bash
-kubectl -n genai rollout restart deploy/gateway deploy/rag-service \
+kubectl -n rag-llm-langchain rollout restart deploy/gateway deploy/rag-service \
   deploy/serving-llm deploy/serving-embedding
-kubectl create job --from=cronjob/rag-ingest rag-ingest-manual -n genai
-kubectl -n genai get pods
+kubectl create job --from=cronjob/rag-ingest rag-ingest-manual -n rag-llm-langchain
+kubectl -n rag-llm-langchain get pods
 curl -s http://<IP>/healthz
 ```

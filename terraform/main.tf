@@ -1,6 +1,6 @@
 resource "google_service_account" "gke" {
-  account_id   = "genai-gke"
-  display_name = "GenAI GKE cluster"
+  account_id   = "rag-llm-langchain-gke"
+  display_name = "RAG LLM LangChain GKE cluster"
 }
 
 data "google_container_engine_versions" "default" {
@@ -8,8 +8,8 @@ data "google_container_engine_versions" "default" {
   project  = var.project_id
 }
 
-resource "google_container_cluster" "genai" {
-  name                     = "genai-cluster"
+resource "google_container_cluster" "rag-llm-langchain" {
+  name                     = "rag-llm-langchain-cluster"
   location                 = var.region
   remove_default_node_pool = true
   initial_node_count       = 1
@@ -28,7 +28,7 @@ resource "google_container_cluster" "genai" {
 
 resource "google_container_node_pool" "cpu" {
   name       = "cpu-pool"
-  cluster    = google_container_cluster.genai.id
+  cluster    = google_container_cluster.rag_llm_langchain.id
   node_count = 1
 
   node_config {
@@ -43,7 +43,7 @@ resource "google_container_node_pool" "cpu" {
 resource "google_container_node_pool" "gpu" {
   count      = var.enable_gpu_pool ? 1 : 0
   name       = "gpu-pool"
-  cluster    = google_container_cluster.genai.id
+  cluster    = google_container_cluster.rag_llm_langchain.id
   node_count = 1
   # nvidia-l4 (L4) is NOT offered in every us-central1 zone (e.g. not -f).
   # Pin to a zone that has L4; otherwise GKE picks a random zone and the create
@@ -68,16 +68,16 @@ resource "google_container_node_pool" "gpu" {
 
 resource "google_artifact_registry_repository" "docker" {
   location      = var.region
-  repository_id = "genai"
+  repository_id = "rag-llm-langchain"
   format        = "DOCKER"
-  description   = "GenAI serving, RAG and gateway images"
+  description   = "RAG LLM LangChain serving, RAG and gateway images"
 }
 
 # Global static IP for the gateway ingress (GCE L7 load balancer).
 # Reference it from the ingress via:
-#   kubernetes.io/ingress.global-static-ip-name: genai-gateway-ip
-resource "google_compute_global_address" "genai_gateway" {
-  name         = "genai-gateway-ip"
+#   kubernetes.io/ingress.global-static-ip-name: rag-llm-langchain-gateway-ip
+resource "google_compute_global_address" "rag_llm_langchain_gateway" {
+  name         = "rag-llm-langchain-gateway-ip"
   project      = var.project_id
   address_type = "EXTERNAL"
 }

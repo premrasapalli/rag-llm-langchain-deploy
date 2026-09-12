@@ -2,7 +2,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: embed-store
-  namespace: genai
+  namespace: rag-llm-langchain
 spec:
   accessModes:
     - ReadWriteOnce

@@ -33,7 +33,7 @@ variable "notify_emails" {
 # --- Notification channel (email) ------------------------------------------
 resource "google_monitoring_notification_channel" "email" {
   count        = length(var.notify_emails) > 0 ? 1 : 0
-  display_name = "GenAI Alert Email"
+  display_name = "RAG LLM LangChain Alert Email"
   type         = "email"
   labels = {
     email_address = var.notify_emails[0]
@@ -45,10 +45,10 @@ locals {
 }
 
 # --- Alert: vLLM / gateway / rag pods not ready (uptime) --------------------
-resource "google_monitoring_alert_policy" "genai_workload_down" {
+resource "google_monitoring_alert_policy" "rag_llm_langchain_workload_down" {
   count = length(local.channels) > 0 ? 1 : 0
 
-  display_name = "GenAI workload not ready (uptime)"
+  display_name = "RAG LLM LangChain workload not ready (uptime)"
   combiner     = "OR"
 
   conditions {
@@ -56,7 +56,7 @@ resource "google_monitoring_alert_policy" "genai_workload_down" {
     condition_threshold {
       filter          = <<-EOT
         resource.type = "k8s_container"
-        AND resource.labels.namespace_name = "genai"
+        AND resource.labels.namespace_name = "rag-llm-langchain"
         AND metric.type = "kubernetes.io/anthos/container/is_ready"
         AND metric.labels.state = "false"
       EOT

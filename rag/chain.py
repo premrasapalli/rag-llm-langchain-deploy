@@ -6,11 +6,11 @@ from openai import OpenAI
 from config import EMBEDDING_MODEL
 from retriever import retrieve
 
-# vLLM is served with --served-model-name genai-model (see k8s serving-llm.yaml),
+# vLLM is served with --served-model-name rag-llm-langchain-model (see k8s serving-llm.yaml),
 # so the model name used by the RAG chain MUST match it or /v1 returns a 404.
 # Override via env when the served name differs (e.g. docker-compose).
 LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "http://serving-llm:8000/v1")
-LLM_MODEL = os.environ.get("LLM_MODEL", "genai-model")
+LLM_MODEL = os.environ.get("LLM_MODEL", "rag-llm-langchain-model")
 
 
 def _build_context(query: str, k: int = 12, max_score: float = 0.6) -> str:

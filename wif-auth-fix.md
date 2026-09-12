@@ -45,7 +45,7 @@ Added the values as repository **Variables** so the `vars.` context resolves the
 | Name                 | Value                                                                                                                  |
 |----------------------|------------------------------------------------------------------------------------------------------------------------|
 | `WIF_PROVIDER`       | `projects/784802248985/locations/global/workloadIdentityPools/github-pool/providers/github-provider`                   |
-| `WIF_SERVICE_ACCOUNT`| `github-actions@aiml-project-idp.iam.gserviceaccount.com`                                                              |
+| `WIF_SERVICE_ACCOUNT`| `github-actions@rag-llm-langchain.iam.gserviceaccount.com`                                                              |
 
 Commands used:
 
@@ -54,7 +54,7 @@ gh variable set WIF_PROVIDER \
   --body "projects/784802248985/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
 
 gh variable set WIF_SERVICE_ACCOUNT \
-  --body "github-actions@aiml-project-idp.iam.gserviceaccount.com"
+  --body "github-actions@rag-llm-langchain.iam.gserviceaccount.com"
 ```
 
 ## Verified Prerequisites
@@ -65,10 +65,10 @@ All GCP-side prerequisites confirmed present and correct:
 - OIDC Provider: `.../providers/github-provider`
   - Issuer: `https://token.actions.githubusercontent.com`
   - Attribute condition: `assertion.repository_owner == 'premrasapalli'`
-- Service account: `github-actions@aiml-project-idp.iam.gserviceaccount.com`
-  - IAM binding on the SA: `roles/iam.serviceAccountTokenCreator` for the principalset matching `premrasapalli/gke-genai-deployment`
-- Secret: `PROJECT_ID` = `aiml-project-idp`
-- Artifact Registry repo `genai` (us-central1, DOCKER) with `roles/artifactregistry.writer` granted to the SA
+- Service account: `github-actions@rag-llm-langchain.iam.gserviceaccount.com`
+  - IAM binding on the SA: `roles/iam.serviceAccountTokenCreator` for the principalset matching `premrasapalli/rag-llm-langchain-deploy`
+- Secret: `PROJECT_ID` = `rag-llm-langchain`
+- Artifact Registry repo `rag-llm-langchain` (us-central1, DOCKER) with `roles/artifactregistry.writer` granted to the SA
 
 ## Alternative Approach
 
