@@ -261,7 +261,7 @@ GCS is a durable, versionable doc source instead of `kubectl cp` races.
 
 ```bash
 gcloud storage buckets create gs://rag-llm-langchain-docs --location=us-central1
-gcloud storage cp -r local-data/docs gs://rag-llm-langchain-docs/docs
+gcloud storage cp -r docs gs://rag-llm-langchain-docs/docs
 ```
 
 The ingest CronJob and its manual clone read this URI from the manifest

@@ -241,7 +241,7 @@ kubectl exec -n rag-llm-langchain "$R" -- python -c \
 
 ```bash
 # Seed docs to GCS
-gcloud storage cp -r local-data/docs gs://rag-llm-langchain-docs/docs
+gcloud storage cp -r docs gs://rag-llm-langchain-docs/docs
 
 # Run the ingest job (reads from GCS, writes to PVC directly)
 kubectl create job --from=cronjob/rag-ingest rag-ingest-manual -n rag-llm-langchain

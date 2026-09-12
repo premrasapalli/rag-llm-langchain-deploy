@@ -195,7 +195,7 @@ curl -s http://34.63.204.167/models     # qwen2.5:0.5b
 
 ```bash
 gcloud storage buckets create gs://rag-llm-langchain-docs --location=us-central1
-gcloud storage cp -r local-data/docs gs://rag-llm-langchain-docs/docs
+gcloud storage cp -r docs gs://rag-llm-langchain-docs/docs
 gsutil iam ch \
   serviceAccount:rag-llm-langchain-gke@rag-llm-langchain.iam.gserviceaccount.com:objectViewer \
   gs://rag-llm-langchain-docs

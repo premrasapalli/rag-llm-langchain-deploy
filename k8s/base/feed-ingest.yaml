@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: feed-ingest
+  namespace: rag-llm-langchain
+  labels:
+    app: feed-ingest
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: feed-ingest
+  template:
+    metadata:
+      labels:
+        app: feed-ingest
+    spec:
+      containers:
+        - name: feed
+          image: rag-llm-langchain/rag:1.0.0
+          imagePullPolicy: Always
+          command: ["python", "-m", "feed_ingest"]
+          env:
+            - name: RAG_PERSIST_DIR
+              value: /data/chroma
+            - name: EMBEDDING_BASE_URL
+              value: http://serving-embedding:8001
+            - name: EMBEDDING_MODEL
+              value: BAAI/bge-small-en-v1.5
+            # Comma-separated RSS/Atom feeds. New items are ingested into the
+            # Chroma knowledge base on every poll.
+            - name: RSS_FEEDS
+              value: ""
+            - name: RSS_MAX_ITEMS
+              value: "20"
+            - name: FEED_POLL_SECONDS
+              value: "300"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            limits:
+              memory: 1Gi
+          volumeMounts:
+            - name: rag-data
+              mountPath: /data
+      volumes:
+        - name: rag-data
+          persistentVolumeClaim:
+            claimName: rag-data
+---
+# Headless service so a readiness probe has something to attach to (optional).
+# The feed-ingest controller polls feeds and writes to the shared Chroma store;
+# it exposes no HTTP endpoints, so this service is only for flow visibility.
+apiVersion: v1
+kind: Service
+metadata:
+  name: feed-ingest
+  namespace: rag-llm-langchain
+  labels:
+    app: feed-ingest
+spec:
+  selector:
+    app: feed-ingest
+  ports:
+    - name: http
+      port: 8080

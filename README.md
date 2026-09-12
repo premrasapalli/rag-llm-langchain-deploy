@@ -34,7 +34,7 @@ from Chroma → vLLM prompt with grounded context → answer.
 
 ```bash
 docker compose up --build -d
-docker compose exec ingest python -m ingest --dir /data/docs   # index local-data/docs
+docker compose exec ingest python -m ingest --dir /data/docs   # index docs
 
 curl http://localhost:8080/healthz
 curl -X POST http://localhost:8080/chat \
@@ -195,6 +195,13 @@ use Filestore only if you must share one model across replicas).
   grow with your corpus.
 - **Embedding model**: `BAAI/bge-small-en-v1.5` is served by TEI and is kept
   consistent between ingestion and query time via `EMBEDDING_MODEL`.
+- **Realtime feeds (optional)**: the `feed-ingest` Deployment polls the
+  comma-separated `RSS_FEEDS` (RSS/Atom) every `FEED_POLL_SECONDS` and upserts
+  *new* items (deduped by their id/link) into the same Chroma store using the
+  same chunker and bge embeddings. Feed items are immediately retrievable by
+  the rag-service — no re-deploy or re-seed needed. Example:
+  `RSS_FEEDS="https://hnrss.org/newest?points=100"`. Set `RSS_FEEDS` to `""`
+  (default) to disable.
 
 ## 7. CI/CD & monitoring
 
@@ -217,6 +224,7 @@ use Filestore only if you must share one model across replicas).
 | Gateway  | `LLM_URL`, `LLM_MODEL`, `RAG_URL`, `API_KEY` | vLLM :8000/v1, `rag-llm-langchain-model`, rag-service :8080, auth off |
 | RAG      | `EMBEDDING_BASE_URL`, `EMBEDDING_MODEL`, `LLM_BASE_URL`, `LLM_MODEL`, `RAG_PERSIST_DIR` | TEI :8001/v1, `BAAI/bge-small-en-v1.5`, vLLM :8000/v1, `rag-llm-langchain-model`, /data/chroma |
 | vLLM     | `HF_MODEL` (initContainer), optional `HF_TOKEN` | `Qwen/Qwen2.5-0.5B-Instruct` |
+| feed-ingest | `RSS_FEEDS`, `RSS_MAX_ITEMS`, `FEED_POLL_SECONDS`, `RSS_FETCH_TIMEOUT` | empty (disabled), 20, 300s, 15s |
 
 
 

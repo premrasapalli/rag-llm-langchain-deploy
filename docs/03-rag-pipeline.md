@@ -34,7 +34,7 @@ User question ---> embed the question ----------------------->|
 gcloud storage buckets create gs://rag-llm-langchain-docs --location=us-central1
 
 # Upload the knowledge base docs
-gcloud storage cp -r local-data/docs gs://rag-llm-langchain-docs/docs
+gcloud storage cp -r docs gs://rag-llm-langchain-docs/docs
 
 # Grant the node SA read access (for the seed-docs initContainer)
 gsutil iam ch \

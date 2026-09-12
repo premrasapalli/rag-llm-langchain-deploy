@@ -51,7 +51,7 @@ services:
     ports:
       - "8082:8080"
     volumes:
-      - ./local-data/docs:/data/docs
+      - ./docs:/data/docs
       - rag-persist:/data/chroma
     environment:
       RAG_PERSIST_DIR: /data/chroma
@@ -71,12 +71,29 @@ services:
     command: ["python", "-m", "ingest", "--dir", "/data/docs"]
     working_dir: /rag
     volumes:
-      - ./local-data/docs:/data/docs
+      - ./docs:/data/docs
       - rag-persist:/data/chroma
     environment:
       RAG_PERSIST_DIR: /data/chroma
       EMBEDDING_BASE_URL: http://serving-embedding:8001/v1
       EMBEDDING_MODEL: BAAI/bge-small-en-v1.5
+    depends_on:
+      serving-embedding:
+        condition: service_started
+
+  feed-ingest:
+    build: ./rag
+    container_name: feed-ingest
+    command: ["python", "-m", "feed_ingest"]
+    working_dir: /rag
+    volumes:
+      - rag-persist:/data/chroma
+    environment:
+      RAG_PERSIST_DIR: /data/chroma
+      EMBEDDING_BASE_URL: http://serving-embedding:8001/v1
+      EMBEDDING_MODEL: BAAI/bge-small-en-v1.5
+      RSS_FEEDS: ""
+      FEED_POLL_SECONDS: "300"
     depends_on:
       serving-embedding:
         condition: service_started
