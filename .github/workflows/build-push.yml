@@ -1,0 +1,83 @@
+name: build-and-push
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      project_id:
+        description: "GCP project ID (overrides secrets.PROJECT_ID)"
+        required: false
+
+env:
+  REGION: us-central1
+  PROJECT_ID: ${{ secrets.PROJECT_ID }}
+  # Where the GKE cluster imagePullSecrets expect images (matches k8s base).
+  REPO: ""
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud (Workload Identity Federation)
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          token_format: access_token
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+          access_token_lifetime: "600s"
+
+      - name: Configure docker for Artifact Registry
+        run: |
+          echo "${{ steps.auth.outputs.access_token }}" | \
+            docker login -u oauth2accesstoken --password-stdin \
+            https://${{ env.REGION }}-docker.pkg.dev
+          echo "REPO=${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/genai" >> "$GITHUB_ENV"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Compute image tag
+        id: tag
+        run: |
+          echo "SHA=${{ github.sha }}" >> "$GITHUB_ENV"
+          # Simple semver-style bump based on the date + short sha, so each deploy
+          # is uniquely tagged and the "1.0.0" in k8s can be overridden by GitOps.
+          echo "TAG=1.0.$(date +%s)-${{ github.sha }}" >> "$GITHUB_ENV"
+
+      - name: Build & push model-loader
+        uses: docker/build-push-action@v6
+        with:
+          context: serving
+          file: serving/Dockerfile.model-loader
+          push: true
+          tags: |
+            ${{ env.REPO }}/model-loader:1.0.0
+            ${{ env.REPO }}/model-loader:${{ env.TAG }}
+
+      - name: Build & push rag
+        uses: docker/build-push-action@v6
+        with:
+          context: rag
+          file: rag/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REPO }}/rag:1.0.0
+            ${{ env.REPO }}/rag:${{ env.TAG }}
+
+      - name: Build & push gateway
+        uses: docker/build-push-action@v6
+        with:
+          context: gateway
+          file: gateway/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REPO }}/gateway:1.0.0
+            ${{ env.REPO }}/gateway:${{ env.TAG }}

@@ -1,0 +1,12 @@
+# Patch: grow the model-store PVC when serving a GPU-sized model.
+# Qwen2.5-7B-Instruct is ~15 GB; a few larger checkpoints or a tokenizer cache
+# fit comfortably in 100Gi. Adjust if your chosen model needs more.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: model-store
+  namespace: genai
+spec:
+  resources:
+    requests:
+      storage: 100Gi

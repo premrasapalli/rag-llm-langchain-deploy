@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rag-service
+  namespace: genai
+  labels:
+    app: rag-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rag-service
+  template:
+    metadata:
+      labels:
+        app: rag-service
+    spec:
+      containers:
+        - name: rag
+          image: genai/rag:1.0.0
+          imagePullPolicy: Always
+          command: ["uvicorn", "service:app", "--host", "0.0.0.0", "--port", "8080"]
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: RAG_PERSIST_DIR
+              value: /data/chroma
+            - name: EMBEDDING_BASE_URL
+              value: http://serving-embedding:8001
+            - name: EMBEDDING_MODEL
+              value: BAAI/bge-small-en-v1.5
+            - name: LLM_BASE_URL
+              value: http://serving-llm:8000/v1
+            - name: LLM_MODEL
+              value: qwen2.5:0.5b
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              memory: 2Gi
+          volumeMounts:
+            - name: rag-data
+              mountPath: /data
+      volumes:
+        - name: rag-data
+          persistentVolumeClaim:
+            claimName: rag-data

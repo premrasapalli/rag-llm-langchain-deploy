@@ -1,0 +1,9 @@
+# vLLM serving wrapper with a small health/liveness probe.
+# Used as a sidecar probe image so Kubernetes can check readiness.
+FROM python:3.12-slim
+
+RUN pip install --no-cache-dir requests
+
+COPY probe.py /probe.py
+
+CMD ["python", "/probe.py"]

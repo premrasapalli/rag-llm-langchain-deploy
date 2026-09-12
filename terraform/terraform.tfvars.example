@@ -1,0 +1,5 @@
+project_id        = "CHANGE_ME"
+region            = "us-central1"
+# Set to true only once your project has GCP quota for NVIDIA_L4_GPUS.
+# GCP default regional GPU quota is 0; request an increase first.
+enable_gpu_pool   = false

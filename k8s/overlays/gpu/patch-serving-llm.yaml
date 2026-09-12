@@ -1,0 +1,30 @@
+# Patch: add NVIDIA GPU to the vLLM serving pod and default to a GPU-sized model.
+# The CPU-only base keeps the small 0.5B model; this overlay is for real serving.
+# Edit HF_MODEL here to pick the model you actually want (must fit the GPU and
+# the model-store PVC). For gated models, also set hf-secret.hf-token.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: serving-llm
+  namespace: genai
+spec:
+  template:
+    spec:
+      # Pin to the GPU node pool created by Terraform (google_container_node_pool.gpu).
+      nodeSelector:
+        cloud.google.com/gke-nodepool: gpu-pool
+      containers:
+        - name: llm
+          resources:
+            requests:
+              cpu: "4"
+              memory: 16Gi
+              nvidia.com/gpu: "1"
+            limits:
+              memory: 24Gi
+              nvidia.com/gpu: "1"
+      initContainers:
+        - name: load-model
+          env:
+            - name: HF_MODEL
+              value: "Qwen/Qwen2.5-7B-Instruct"

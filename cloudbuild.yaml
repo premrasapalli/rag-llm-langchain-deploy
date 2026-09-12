@@ -1,0 +1,13 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'us-central1-docker.pkg.dev/$PROJECT_ID/genai/gateway:1.0.0', 'gateway/']
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'us-central1-docker.pkg.dev/$PROJECT_ID/genai/rag:1.0.0', 'rag/']
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'us-central1-docker.pkg.dev/$PROJECT_ID/genai/model-loader:1.0.0', 'serving/', '-f', 'serving/Dockerfile.model-loader']
+images:
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/genai/gateway:1.0.0'
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/genai/rag:1.0.0'
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/genai/model-loader:1.0.0'
+options:
+  logging: CLOUD_LOGGING_ONLY

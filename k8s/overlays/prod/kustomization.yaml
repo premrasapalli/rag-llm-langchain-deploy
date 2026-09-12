@@ -1,0 +1,22 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# NOTE: no top-level `namespace:` field — every base resource declares
+# `namespace: genai` explicitly, so the deploy namespace is still genai. This
+# keeps the base/overlay split safe if a future overlay needs another namespace.
+resources:
+  - ../../base
+# Prod overlay: pins the build to the real Artifact Registry repo.
+#
+# Set REGION and PROJECT_ID to your own values before deploying.
+#   REGION=us-central1  PROJECT_ID=aiml-project-idp
+# If you use a different region/project, edit the newName entries below.
+images:
+  - name: genai/model-loader
+    newName: us-central1-docker.pkg.dev/aiml-project-idp/genai/model-loader
+    newTag: "1.0.0"
+  - name: genai/rag
+    newName: us-central1-docker.pkg.dev/aiml-project-idp/genai/rag
+    newTag: "1.0.0"
+  - name: genai/gateway
+    newName: us-central1-docker.pkg.dev/aiml-project-idp/genai/gateway
+    newTag: "1.0.0"

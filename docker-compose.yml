@@ -1,0 +1,100 @@
+services:
+  serving-llm:
+    image: vllm/vllm-openai:v0.9.0
+    container_name: serving-llm
+    command:
+      - --model
+      - Qwen/Qwen2.5-0.5B-Instruct
+      - --served-model-name
+      - genai-model
+      - --port
+      - "8000"
+    ports:
+      - "8000:8000"
+    volumes:
+      - llm-models:/models
+    environment:
+      HF_HOME: /models
+      VLLM_WORKER_MULTIPROC_METHOD: spawn
+    deploy:
+      resources:
+        limits:
+          memory: 6g
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health", "||", "exit", "1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  serving-embedding:
+    image: ghcr.io/huggingface/text-embeddings-inference:1.5
+    container_name: serving-embedding
+    command:
+      - --model-id
+      - BAAI/bge-small-en-v1.5
+      - --port
+      - "8001"
+    ports:
+      - "8001:8001"
+    environment:
+      HF_HOME: /models
+    deploy:
+      resources:
+        limits:
+          memory: 4g
+
+  rag:
+    build: ./rag
+    container_name: rag-service
+    command: ["uvicorn", "service:app", "--host", "0.0.0.0", "--port", "8080"]
+    working_dir: /rag
+    ports:
+      - "8082:8080"
+    volumes:
+      - ./local-data/docs:/data/docs
+      - rag-persist:/data/chroma
+    environment:
+      RAG_PERSIST_DIR: /data/chroma
+      EMBEDDING_BASE_URL: http://serving-embedding:8001/v1
+      EMBEDDING_MODEL: BAAI/bge-small-en-v1.5
+      LLM_BASE_URL: http://serving-llm:8000/v1
+      LLM_MODEL: genai-model
+    depends_on:
+      serving-llm:
+        condition: service_started
+      serving-embedding:
+        condition: service_started
+
+  ingest:
+    build: ./rag
+    container_name: rag-ingest
+    command: ["python", "-m", "ingest", "--dir", "/data/docs"]
+    working_dir: /rag
+    volumes:
+      - ./local-data/docs:/data/docs
+      - rag-persist:/data/chroma
+    environment:
+      RAG_PERSIST_DIR: /data/chroma
+      EMBEDDING_BASE_URL: http://serving-embedding:8001/v1
+      EMBEDDING_MODEL: BAAI/bge-small-en-v1.5
+    depends_on:
+      serving-embedding:
+        condition: service_started
+
+  gateway:
+    build: ./gateway
+    container_name: gateway
+    ports:
+      - "8080:8080"
+    environment:
+      LLM_URL: http://serving-llm:8000/v1
+      LLM_MODEL: genai-model
+      RAG_URL: http://rag-service:8080
+      EMBED_URL: http://serving-embedding:8001/v1
+    depends_on:
+      rag:
+        condition: service_started
+
+volumes:
+  llm-models:
+  rag-persist:

@@ -1,0 +1,9 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: nfs-filestore
+provisioner: filestore.csi.storage.gke.io
+parameters:
+  tier: basic-hdd
+  network: default
+reclaimPolicy: Delete

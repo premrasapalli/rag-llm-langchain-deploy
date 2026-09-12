@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: serving-llm
+  namespace: genai
+  labels:
+    app: serving-llm
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: serving-llm
+  template:
+    metadata:
+      labels:
+        app: serving-llm
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        fsGroup: 1001
+        fsGroupChangePolicy: Always
+      containers:
+        - name: llm
+          image: ollama/ollama:latest
+          imagePullPolicy: Always
+          # CPU-only serving backend for this stack (no L4 quota yet). Ollama
+          # provides an OpenAI-compatible API at :8000/v1.
+          command: ["/bin/sh", "-c"]
+          args:
+            - "ollama serve & sleep 3 && ollama pull qwen2.5:0.5b && wait"
+          ports:
+            - name: http
+              containerPort: 8000
+          env:
+            - name: OLLAMA_HOST
+              value: 0.0.0.0:8000
+            - name: OLLAMA_MODELS
+              value: /models/ollama
+            - name: HOME
+              value: /models/home
+          readinessProbe:
+            httpGet:
+              path: /api/tags
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/tags
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: 2
+              memory: 6Gi
+            limits:
+              memory: 12Gi
+          volumeMounts:
+            - name: model-store
+              mountPath: /models
+      volumes:
+        - name: model-store
+          persistentVolumeClaim:
+            claimName: model-store

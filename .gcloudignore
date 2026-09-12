@@ -1,0 +1,10 @@
+.git
+terraform/
+argocd/
+k8s/
+monitoring/
+local-data/
+docker-compose.yml
+__pycache__/
+*.pyc
+*.tfplan

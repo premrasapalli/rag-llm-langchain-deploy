@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: model-store
+  namespace: genai
+spec:
+  accessModes:
+    # The model is only consumed by a single serving-llm pod (init + main share
+    # it), so ReadWriteOnce suffices and lets us use the low-latency SSD class.
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+  storageClassName: premium-rwo
+  # For larger GPU models or sharing one model across many replicas, use GKE
+  # Filestore or GCS FUSE instead of block storage.

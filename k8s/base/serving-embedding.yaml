@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: serving-embedding
+  namespace: genai
+  labels:
+    app: serving-embedding
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: serving-embedding
+  template:
+    metadata:
+      labels:
+        app: serving-embedding
+    spec:
+      securityContext:
+        fsGroup: 1001
+        fsGroupChangePolicy: Always
+      initContainers:
+        - name: load-model
+          image: genai/model-loader:1.0.0
+          imagePullPolicy: Always
+          env:
+            - name: HF_MODEL
+              value: "BAAI/bge-small-en-v1.5"
+            - name: HF_DEST
+              value: /data/model
+            - name: HF_HUB_DISABLE_XET
+              value: "1"
+          securityContext:
+            allowPrivilegeEscalation: false
+          volumeMounts:
+            - name: embed-store
+              mountPath: /data
+      containers:
+        - name: embedding
+          image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.5
+          args:
+            - --model-id
+            - /data/model
+            - --port
+            - "8001"
+          ports:
+            - name: http
+              containerPort: 8001
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 1
+              memory: 2Gi
+            limits:
+              memory: 4Gi
+          volumeMounts:
+            - name: embed-store
+              mountPath: /data/model
+              subPath: model
+      volumes:
+        - name: embed-store
+          persistentVolumeClaim:
+            claimName: embed-store

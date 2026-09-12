@@ -1,0 +1,21 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: genai
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/premrasapalli/gke-genai-deployment.git
+    targetRevision: main
+    path: k8s/overlays/gke
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: genai
+  syncPolicy:
+    automated:
+      selfHeal: true
+      prune: true
+    syncOptions:
+      - CreateNamespace=true
+      - ApplyOutOfSyncOnly=true

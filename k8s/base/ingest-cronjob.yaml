@@ -1,0 +1,58 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: rag-ingest
+  namespace: genai
+spec:
+  schedule: "0 */6 * * *"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          initContainers:
+            - name: seed-docs
+              # Copies a GCS bucket of source docs into the shared rag-data PVC
+              # before the ingest container indexes them. Set DOCS_GCS_URI to a
+              # GCS bucket path (gs://my-bucket/docs) OR remove this initContainer
+              # and copy docs into the PVC manually (e.g. kubectl cp).
+              image: google/cloud-sdk:slim
+              imagePullPolicy: IfNotPresent
+              command: ["sh", "-c"]
+              args:
+                - |
+                  set -e
+                  if [ -n "${DOCS_GCS_URI:-}" ]; then
+                    echo "Seeding docs from ${DOCS_GCS_URI}"
+                    gsutil -m rsync -r "${DOCS_GCS_URI}" /data/docs
+                  else
+                    echo "DOCS_GCS_URI not set; using whatever is already in /data/docs"
+                  fi
+              env:
+                - name: DOCS_GCS_URI
+                  value: ""
+                # The GKE workload identity service account must have
+                # roles/storage.objectViewer on the bucket.
+              volumeMounts:
+                - name: rag-data
+                  mountPath: /data
+          containers:
+            - name: ingest
+              image: genai/rag:1.0.0
+              imagePullPolicy: Always
+              command: ["python", "-m", "ingest", "--dir", "/data/docs"]
+              env:
+                - name: RAG_PERSIST_DIR
+                  value: /data/chroma
+                - name: EMBEDDING_BASE_URL
+                  value: http://serving-embedding:8001
+                - name: EMBEDDING_MODEL
+                  value: BAAI/bge-small-en-v1.5
+              volumeMounts:
+                - name: rag-data
+                  mountPath: /data
+          volumes:
+            - name: rag-data
+              persistentVolumeClaim:
+                claimName: rag-data

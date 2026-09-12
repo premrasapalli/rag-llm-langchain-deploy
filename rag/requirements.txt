@@ -1,0 +1,10 @@
+chromadb==0.4.24
+langchain==0.3.7
+langchain-community==0.3.7
+langchain-chroma==0.1.4
+langchain-openai==0.2.9
+openai==1.55.3
+python-dotenv==1.0.1
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+pydantic==2.10.2

@@ -1,0 +1,7 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# Kept WITHOUT a `namespace:` field on purpose: the driver DaemonSet must live
+# in kube-system, not genai. (The parent gpu overlay must therefore also not set
+# a top-level namespace, or kustomize would rewrite this to genai.)
+resources:
+  - nvidia-driver.yaml

@@ -1,0 +1,9 @@
+# Ollama model server — lightweight alternative to vLLM.
+# Provides /api/generate, /api/chat and /api/embeddings.
+FROM ollama/ollama:latest
+
+ENV OLLAMA_HOST=0.0.0.0
+# Default model pulled via the pull-entriespoint helper image.
+EXPOSE 11434
+
+ENTRYPOINT ["ollama", "serve"]

@@ -1,0 +1,19 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# NOTE: no top-level `namespace:` here. Every base manifest already declares
+# `namespace: genai` explicitly, and the nvidia-driver sub-kustomization must
+# keep `kube-system`. A top-level namespace field would force ALL resources
+# (including the driver DaemonSet) into `genai`.
+resources:
+  - ../../base
+  - nvidia-driver
+# Enable NVIDIA GPU serving for vLLM. Requires:
+#   1. A GPU node pool (see terraform google_container_node_pool.gpu, L4).
+#   2. The NVIDIA GPU driver DaemonSet (installed by this overlay, in kube-system)
+#      OR GKE automated driver installation. This overlay pins the pod to the
+#      gpu-pool via nodeSelector.
+#   3. HF_MODEL (patch-serving-llm.yaml) should be a model that fits the GPU,
+#      e.g. Qwen/Qwen2.5-7B-Instruct.
+patches:
+  - path: patch-serving-llm.yaml
+  - path: patch-pvc-model.yaml

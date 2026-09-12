@@ -1,0 +1,23 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# NOTE: no top-level `namespace:` field (see overlays/gpu/kustomization.yaml).
+resources:
+  - ../gpu
+# Full GKE deployment: real Artifact Registry images + NVIDIA GPU serving.
+# Composes the gpu overlay (base + GPU patch + NVIDIA driver DaemonSet) and
+# pins the Artifact Registry.   kubectl apply -k k8s/overlays/gke
+#
+# Before applying:
+#   - Confirm REGION/PROJECT_ID below match your GCP project.
+#   - Confirm HF_MODEL fits the GPU (see patch in overlays/gpu) and that the
+#     gpu-pool node pool exists.
+images:
+  - name: genai/model-loader
+    newName: us-central1-docker.pkg.dev/aiml-project-idp/genai/model-loader
+    newTag: "1.0.0"
+  - name: genai/rag
+    newName: us-central1-docker.pkg.dev/aiml-project-idp/genai/rag
+    newTag: "1.0.0"
+  - name: genai/gateway
+    newName: us-central1-docker.pkg.dev/aiml-project-idp/genai/gateway
+    newTag: "1.0.0"

@@ -1,0 +1,6 @@
+# Pulls a Hugging Face model into the shared model volume and exits.
+# Runs as a vLLM initContainer. Build & push as genai/model-loader.
+FROM python:3.12-slim
+RUN pip install --no-cache-dir huggingface_hub
+COPY download_model.py /download_model.py
+CMD ["python", "/download_model.py"]

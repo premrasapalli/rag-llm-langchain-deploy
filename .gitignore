@@ -1,0 +1,32 @@
+# Byte-compiled
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Env / secrets
+.env
+.env.*
+
+# Terraform
+.terraform/
+*.tfstate*
+*.tfvars
+*.tfplan
+
+# K8s local
+kubeconfig*
+
+# IDE
+.idea/
+.vscode/
+.DS_Store
+
+# RAG runtime data
+rag/persist/
+local-data/chroma/
+
+# Python build
+build/
+dist/
+*.egg-info/

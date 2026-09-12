@@ -1,0 +1,35 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: genai
+resources:
+  - namespace.yaml
+  - storageclass-filestore.yaml
+  - pvc-model.yaml
+  - pvc-rag.yaml
+  - pvc-embed.yaml
+  - serving-llm.yaml
+  - serving-embedding.yaml
+  - rag-service.yaml
+  - gateway.yaml
+  - gateway-secret.yaml
+  - hf-secret.yaml
+  - svc-serving-llm.yaml
+  - svc-serving-embedding.yaml
+  - svc-rag-service.yaml
+  - svc-gateway.yaml
+  - ingress.yaml
+  - ingest-cronjob.yaml
+# Registry note: the base manifests reference bare image names (genai/<name>).
+# The kustomize `images` transform here only pins tags; the real Artifact
+# Registry (REGION-docker.pkg.dev/PROJECT_ID/genai) is injected by the prod
+# overlay (k8s/overlays/prod) so the registry is set in one place on deploy.
+#
+# Deploy via:
+#   kubectl apply -k k8s/overlays/prod     # -> real Artifact Registry
+images:
+  - name: genai/model-loader
+    newTag: "1.0.0"
+  - name: genai/rag
+    newTag: "1.0.0"
+  - name: genai/gateway
+    newTag: "1.0.0"

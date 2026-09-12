@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: rag-data
+  namespace: genai
+spec:
+  accessModes:
+    # Shared by rag-service and the ingest CronJob (separate pods), so it must
+    # be ReadWriteMany. GCE `standard-rwo`/`pd-ssd` are RWO-only — use a class
+    # that supports RWX, e.g. GKE Filestore CSI (`nfs`) or NetApp, and set it
+    # below. Without this the ingest pod cannot mount while rag-service is up.
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 20Gi
+  storageClassName: nfs-filestore
+  # Sizing: Chroma persists embeddings + metadata here. 20Gi is a starting
+  # point; grow it with your document corpus (watch ChromeCollection growth).
+  # Note: Filestore instances have a ~1TB (basic-hdd) minimum, so the billed
+  # capacity is the instance size, not the PVC request.
