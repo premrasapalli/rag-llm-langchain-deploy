@@ -2,8 +2,8 @@
 from langchain_community.document_loaders import TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-CHUNK_SIZE = 500
-CHUNK_OVERLAP = 50
+CHUNK_SIZE = 300
+CHUNK_OVERLAP = 30
 
 
 def load_and_chunk(path: str):
