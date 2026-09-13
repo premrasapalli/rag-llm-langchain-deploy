@@ -30,7 +30,7 @@ spec:
             # Comma-separated RSS/Atom feeds. New items are ingested into the
             # Chroma knowledge base on every poll.
             - name: RSS_FEEDS
-              value: "https://hnrss.org/frontpage,https://arxiv.org/rss/cs.CL"
+              value: ""
             - name: RSS_MAX_ITEMS
               value: "20"
             - name: FEED_POLL_SECONDS
