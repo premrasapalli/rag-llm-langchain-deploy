@@ -10,7 +10,7 @@ spec:
     - ReadWriteOnce
   resources:
     requests:
-      storage: 50Gi
+      storage: 100Gi
   storageClassName: premium-rwo
   # For larger GPU models or sharing one model across many replicas, use GKE
   # Filestore or GCS FUSE instead of block storage.
