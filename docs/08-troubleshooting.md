@@ -237,16 +237,23 @@ kubectl exec -n rag-llm-langchain "$R" -- python -c \
 
 **Root cause:** pod name changed between resolving and copying (deployment roll).
 
-**Fix:** use GCS seed path instead:
+**Fix:** use a dedicated scratch pod on the shared Filestore PVC (its name is
+stable for the sleep duration):
 
 ```bash
-# Seed docs to GCS
-gcloud storage cp -r docs gs://rag-llm-langchain-docs/docs
+kubectl -n rag-llm-langchain run seed-docs \
+  --image=busybox:1.36 --restart=Never --command -- sh -c "sleep 600"
+kubectl cp local-data/10-internal-data-dump.md \
+  rag-llm-langchain/seed-docs:/data/docs/10-internal-data-dump.md
+kubectl delete pod seed-docs -n rag-llm-langchain
 
-# Run the ingest job (reads from GCS, writes to PVC directly)
+# Then run the ingest job
 kubectl create job --from=cronjob/rag-ingest rag-ingest-manual -n rag-llm-langchain
 kubectl wait --for=condition=complete job/rag-ingest-manual -n rag-llm-langchain --timeout=300s
 ```
+
+(For `DOCS_GCS_URI` GCS seeding, grant the node SA `roles/storage.objectViewer`
+on the bucket instead.)
 
 ---
 

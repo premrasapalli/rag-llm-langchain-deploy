@@ -11,9 +11,11 @@ open-source tools.
 
 ## The four big building blocks
 
-1. **Model serving** — hosts the AI models that generate text. We use vLLM (or
-   the lighter Ollama in CPU mode) to run the LLM, and a second service called
-   "Text Embeddings Inference" (TEI) to turn text into numbers (embeddings).
+1. **Model serving** — hosts the AI models that generate text. We use Ollama
+   (OpenAI-compatible) to run a small LLM (Qwen 2.5 0.5B) on CPU, and a second
+   service called "Text Embeddings Inference" (TEI) to turn text into numbers
+   (embeddings). A GPU/vLLM path is declared but disabled until L4 GPU quota is
+   available.
 
 2. **RAG (Retrieval Augmented Generation)** — lets the model answer questions
    using *your* documents instead of only its own training data. Documents are
@@ -26,18 +28,18 @@ open-source tools.
    to the AI without knowing about any of the internals.
 
 4. **Infrastructure as Code** — everything (cluster, storage, node pools) is
-   defined in Terraform and deployed with Kubernetes manifests, so the whole
-   platform is reproducible, reviewable, and GitOps-ready.
+   defined in Terraform and deployed with Kubernetes manifests through ArgoCD,
+   so the whole platform is reproducible, reviewable, and GitOps-driven.
 
 ## Quick reference — what is running
 
-| Service               | Port | What it does                                    |
-|-----------------------|------|-------------------------------------------------|
-| gateway               | 80   | FastAPI entry point: `/chat`, `/rag`, `/models`, `/healthz` |
-| serving-llm           | 8000 | LLM inference (Ollama CPU or vLLM GPU)          |
-| serving-embedding     | 8001 | TEI embeddings (`BAAI/bge-small-en-v1.5`)       |
-| rag-service           | 8080 | Retrieve from Chroma + generate grounded answer |
-| rag-ingest            | —    | CronJob: chunk docs, embed, store in Chroma     |
+| Service             | Port | What it does                                    |
+|---------------------|------|-------------------------------------------------|
+| gateway             | 80   | FastAPI entry point: `/chat`, `/rag`, `/models`, `/healthz` |
+| serving-llm         | 8000 | LLM inference (Ollama, `qwen2.5:0.5b`)          |
+| serving-embedding   | 8001 | TEI embeddings (`BAAI/bge-small-en-v1.5`)       |
+| rag-service         | 8080 | Retrieve from Chroma + generate grounded answer |
+| rag-ingest          | —    | CronJob (6h): chunk docs, embed, store in Chroma |
 
 ## Verify the platform is live (from zero)
 

@@ -31,6 +31,10 @@ gcloud billing projects link rag-llm-langchain \
 gcloud billing projects describe rag-llm-langchain   # billingEnabled: true
 ```
 
+> If the GKE API suddenly returns "this API method requires billing to be
+> enabled", the billing link fell off. Re-link the account AND verify the Cloud
+> Billing API is enabled, then wait a few minutes for propagation.
+
 ### 0.4 Enable required APIs
 
 ```bash
@@ -61,8 +65,11 @@ kubectl config current-context    # should print the rag-llm-langchain cluster
 
 ```bash
 docker --version
-uname -m   # arm64 = Mac; builds must target linux/amd64 via Cloud Build
+uname -m   # arm64 = Mac; builds MUST pass --platform linux/amd64
 ```
+
+Because the local machine is Apple Silicon, `docker build` emits arm64 by
+default. Always build with `--platform linux/amd64` for the GKE amd64 nodes.
 
 ---
 
@@ -113,20 +120,29 @@ kubectl get storageclass
 
 ---
 
-## Phase C — Build and push images (Cloud Build, amd64)
+## Phase C — Build and push images (local, amd64)
 
-### C1. Build all three images
+### C1. Build the rag image (SQL/CPU changes only affect `rag/`)
+
+The `gateway` and `model-loader` images are stable (`1.0.0`). Bump and rebuild
+only `rag` when its code changes; `EMBED_BATCH`/chunking lives there.
 
 ```bash
-gcloud builds submit --region=us-central1 --config=cloudbuild.yaml .
+export REGION=us-central1; export PROJECT_ID=rag-llm-langchain
+docker build --platform linux/amd64 \
+  -t $REGION-docker.pkg.dev/$PROJECT_ID/rag-llm-langchain/rag:1.0.3 rag/
+docker push $REGION-docker.pkg.dev/$PROJECT_ID/rag-llm-langchain/rag:1.0.3
 ```
+
+(Optional, needs Cloud Build API + IAM on your account:
+`gcloud builds submit --config=cloudbuild.yaml .`.)
 
 ### C2. Verify images in Artifact Registry
 
 ```bash
 gcloud artifacts docker images list \
   us-central1-docker.pkg.dev/rag-llm-langchain/rag-llm-langchain
-# gateway:1.0.0, rag:1.0.0, model-loader:1.0.0
+# gateway:1.0.0, rag:1.0.3, model-loader:1.0.0
 ```
 
 ### C3. Grant the node SA pull rights
@@ -139,7 +155,7 @@ gcloud projects add-iam-policy-binding rag-llm-langchain \
 
 ---
 
-## Phase D — Deploy workloads (Kustomize)
+## Phase D — Deploy workloads (Kustomize / ArgoCD)
 
 ### D1. Apply base + prod overlay
 
@@ -150,6 +166,14 @@ kubectl apply -k k8s/overlays/prod
 > Base alone carries short image names (`rag-llm-langchain/gateway`); the prod overlay
 > rewrites them to the full registry path. Skipping the overlay = pods pull
 > `docker.io/rag-llm-langchain/...` and fail.
+
+This cluster is managed by ArgoCD instead — install it and register the app
+(see README §4), or patch a sync to roll out a pushed change:
+
+```bash
+kubectl patch app rag-llm-langchain -n argocd --type merge \
+  -p '{"operation":{"sync":{"revision":"main","prune":true}}}'
+```
 
 ### D2. Wait for everything to become healthy
 
@@ -169,37 +193,46 @@ serving-embedding-xxx  1/1   Running
 
 ---
 
-## Phase E — Public URL
+## Phase E — Reach the API (port-forward / LB)
 
-### E1. Create the LoadBalancer
+The `gateway` is exposed as a ClusterIP + GCE Ingress (HTTP, for testing). For
+quick local access and the smoke tests below, use a port-forward:
+
+```bash
+kubectl port-forward -n rag-llm-langchain svc/gateway 8080:80 & sleep 3
+curl -s http://localhost:8080/healthz    # {"status":"ok"}
+curl -s http://localhost:8080/models     # qwen2.5:0.5b
+kill %1
+```
+
+To get a public IP instead (not configured in this deploy), create a
+LoadBalancer service:
 
 ```bash
 kubectl -n rag-llm-langchain create service loadbalancer gateway-lb --tcp=80:8080 \
   --dry-run=client -o yaml | kubectl apply -f -
-kubectl -n get svc gateway-lb
-# EXTERNAL-IP: 34.63.204.167
-```
-
-### E2. Verify health from the public IP
-
-```bash
-curl -s http://34.63.204.167/healthz    # {"status":"ok"}
-curl -s http://34.63.204.167/models     # qwen2.5:0.5b
+kubectl -n rag-llm-langchain get svc gateway-lb
+# EXTERNAL-IP: 34.63.204.167  <- copy this IP
 ```
 
 ---
 
 ## Phase F — Seed RAG knowledge base
 
-### F1. Create GCS bucket and upload docs
+### F1. Copy the internal-data doc into the rag-data PVC
+
+The live deploy seeds the file with a scratch pod on the shared Filestore PVC:
 
 ```bash
-gcloud storage buckets create gs://rag-llm-langchain-docs --location=us-central1
-gcloud storage cp -r docs gs://rag-llm-langchain-docs/docs
-gsutil iam ch \
-  serviceAccount:rag-llm-langchain-gke@rag-llm-langchain.iam.gserviceaccount.com:objectViewer \
-  gs://rag-llm-langchain-docs
+kubectl -n rag-llm-langchain run seed-docs \
+  --image=busybox:1.36 --restart=Never --command -- sh -c "sleep 600"
+kubectl cp local-data/10-internal-data-dump.md \
+  rag-llm-langchain/seed-docs:/data/docs/10-internal-data-dump.md
+kubectl delete pod seed-docs -n rag-llm-langchain
 ```
+
+(For GCS seeding, set `DOCS_GCS_URI` on the CronJob and grant the node SA
+`roles/storage.objectViewer` on the bucket.)
 
 ### F2. Run manual ingest
 
@@ -222,9 +255,11 @@ kubectl exec -n rag-llm-langchain "$R" -- python -c "from config import get_stor
 ### F4. Test RAG
 
 ```bash
-curl -s -X POST http://34.63.204.167/rag -H 'Content-Type: application/json' \
+kubectl port-forward -n rag-llm-langchain svc/gateway 8080:80 & sleep 3
+curl -s -X POST http://localhost:8080/rag -H 'Content-Type: application/json' \
   -d '{"query":"What is RAG?"}' | python3 -m json.tool
 # Grounded answer citing your docs
+kill %1
 ```
 
 ---

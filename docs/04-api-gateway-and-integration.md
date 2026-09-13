@@ -174,11 +174,14 @@ sleep 2; kill $LOG $PF
 ## Trace: ingestion (offline path)
 
 ```
-GCS bucket ──► seed-docs (gsutil rsync) ──► /data/docs (rag-data PVC)
+local-data/10-internal-data-dump.md ──► kubectl cp ──► /data/docs (rag-data PVC)
                                               │
-rag-ingest (python -m ingest):                ▼
-    chunk .md/.txt ──► embed via TEI ──► upsert into /data/chroma
+rag-ingest (python -m ingest --wipe --paths): ▼
+    chunk .md/.txt ──► embed via TEI (batched) ──► upsert into /data/chroma
 ```
+
+(GCS seeding via the CronJob's `DOCS_GCS_URI` is supported but not used in the
+CPU deploy — see `03-rag-pipeline.md`.)
 
 ```bash
 # Trigger a manual ingest and watch the flow

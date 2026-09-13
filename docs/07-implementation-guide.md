@@ -35,13 +35,17 @@ gcloud auth application-default login   # for terraform locally
 
 ### 0.3 Enable billing on the project. Why?
 No billing = virtually every create call fails with confusing quota/denial
-errors. This bit us.
+errors. This bit us twice.
 
 ```bash
 gcloud billing projects link rag-llm-langchain \
   --billing-account=01716C-ECBC7F-34FFF7
 gcloud billing projects describe rag-llm-langchain   # expect billingEnabled: true
 ```
+
+If a previously-working cluster suddenly returns "requires billing to be
+enabled", the project lost its billing link: re-run the link above, enable
+`cloudbilling.googleapis.com`, and wait for propagation.
 
 ### 0.4 Enable the APIs Terraform will call. Why?
 The service APIs must exist before resources can be created.
@@ -136,28 +140,30 @@ Two access profiles:
 They are already in `k8s/base/storageclass-filestore.yaml` and applied with the
 base manifests in Phase D.
 
+> **Gotcha:** the `nfs-filestore` StorageClass must set
+> `instance-location: us-central1-a`. With Immediate binding and no topology
+> from a pod, provisioning fails with `no available topology found` unless the
+> zone is explicit. StorageClass `parameters` are immutable, so changing them on
+> an existing class requires delete + recreate (ArgoCD handles this).
+
 ---
 
 ## Phase C — Build & push the container images
 
-### C1. Build with Cloud Build (x86 hosts). Why?
+### C1. Build locally with `--platform linux/amd64`. Why?
 Local `docker build` on Apple Silicon produces arm64 images that amd64 GKE
-nodes refuse with `exec format error`. Cloud Build runs on x86, so images always
-match the cluster.
+nodes refuse with `exec format error`. Only `rag` is versioned and changes often
+(it holds the chunker and `EMBED_BATCH` batching); `gateway`/`model-loader` are
+stable at `1.0.0`.
 
 ```bash
-gcloud builds submit --region=us-central1 --config=cloudbuild.yaml .
+export AR=us-central1-docker.pkg.dev/rag-llm-langchain/rag-llm-langchain
+docker build --platform linux/amd64 -t $AR/rag:1.0.3 rag/
+docker push $AR/rag:1.0.3
 ```
 
-This builds and pushes `gateway:1.0.0`, `rag:1.0.0`, `model-loader:1.0.0`
-(linux/amd64) to `us-central1-docker.pkg.dev/rag-llm-langchain/rag-llm-langchain`.
-
-Or build the three images manually:
-
-```bash
-gcloud builds submit --region=us-central1 \
-  --tag=us-central1-docker.pkg.dev/rag-llm-langchain/rag-llm-langchain/gateway:1.0.0 gateway/
-```
+(GPU/unkind images don't apply here — TEI comes from upstream and Ollama is
+pulled by the deployment.)
 
 Verify they landed:
 
@@ -165,6 +171,9 @@ Verify they landed:
 gcloud artifacts docker images list \
   us-central1-docker.pkg.dev/rag-llm-langchain/rag-llm-langchain
 ```
+
+(Cloud Build alternative: `gcloud builds submit --config=cloudbuild.yaml .` —
+requires the Cloud Build API and IAM on your account.)
 
 ### C2. Grant the nodes pull rights. Why?
 Cluster nodes pull images as `rag-llm-langchain-gke@rag-llm-langchain.iam.gserviceaccount.com`.
@@ -186,7 +195,7 @@ gsutil iam ch \
 
 ---
 
-## Phase D — Deploy the workloads (Kustomize)
+## Phase D — Deploy the workloads (Kustomize / ArgoCD)
 
 ### D1. Apply the base manifest set. Why?
 One declarative pass creates namespace `rag-llm-langchain`, secrets, services, deployments,
@@ -203,6 +212,20 @@ base alone makes pods pull `docker.io/rag-llm-langchain/gateway` and fail.
 
 ```bash
 kubectl apply -k k8s/overlays/prod
+```
+
+### D3. OR deploy via ArgoCD (how this cluster is actually run). Why?
+GitOps means a push to `main` is the deploy — no manual kubectl apply.
+
+```bash
+helm repo add argo https://argoproj.github.io/argo-helm
+helm upgrade --install argocd argo/argo-cd --namespace argocd --create-namespace --wait
+kubectl apply -f argocd/rag-llm-langchain-app.yaml   # targets k8s/overlays/prod
+
+# Watch it sync, or force a sync after a push:
+kubectl get app -n argocd
+kubectl patch app rag-llm-langchain -n argocd --type merge \
+  -p '{"operation":{"sync":{"revision":"main","prune":true}}}'
 ```
 
 ### D3. Watch everything become healthy. Why?
@@ -228,44 +251,46 @@ to finish before the pods show `Running`.
 
 ---
 
-## Phase E — Expose it with a public URL
+## Phase E — Reach the API
 
-### E1. Create a LoadBalancer service. Why?
-The GCE Ingress controller did not provision a load balancer, so we exposed the
-gateway with a classic `type: LoadBalancer` service, which the cloud provider
-fulfills reliably.
+### E1. Port-forward (quick local access). Why?
+The gateway Service is ClusterIP; a port-forward proves the API works without
+exposing it publicly.
+
+```bash
+kubectl port-forward -n rag-llm-langchain svc/gateway 8080:80 & sleep 3
+curl -s http://localhost:8080/healthz        # {"status":"ok"}
+curl -s http://localhost:8080/models         # qwen2.5:0.5b
+kill %1
+```
+
+### E2. Optional public LoadBalancer. Why?
+If you need a public IP instead of the GCE Ingress, create an LB service:
 
 ```bash
 kubectl -n rag-llm-langchain create service loadbalancer gateway-lb --tcp=80:8080 \
   --dry-run=client -o yaml | kubectl apply -f -
 kubectl -n rag-llm-langchain get svc gateway-lb
 # NAME         TYPE           CLUSTER-IP    EXTERNAL-IP
-# gateway-lb   LoadBalancer   10.x.x.x      34.63.204.167   <- copy this IP
-```
-
-### E2. Verify health from the public URL. Why?
-The IP is useless until the API actually answers.
-
-```bash
-curl -s http://34.63.204.167/healthz        # {"status":"ok"}
-curl -s http://34.63.204.167/models         # qwen2.5:0.5b
+# gateway-lb   LoadBalancer   10.0.x.x      34.63.204.167   <- copy this IP
 ```
 
 ---
 
 ## Phase F — Seed the RAG knowledge base
 
-### F1. Upload source documents to GCS. Why?
-The CronJob's `seed-docs` initContainer rsyncs `DOCS_GCS_URI` into `/data/docs`.
-GCS is a durable, versionable doc source instead of `kubectl cp` races.
+### F1. Seed source documents into the PVC. Why?
+The ingest CronJob reads the single internal-data file from `/data/docs` on the
+shared `rag-data` PVC. The live CPU deploy copies it there with `kubectl cp`
+(GCS seeding via `DOCS_GCS_URI` is supported but not configured):
 
 ```bash
-gcloud storage buckets create gs://rag-llm-langchain-docs --location=us-central1
-gcloud storage cp -r docs gs://rag-llm-langchain-docs/docs
+kubectl -n rag-llm-langchain run seed-docs \
+  --image=busybox:1.36 --restart=Never --command -- sh -c "sleep 600"
+kubectl cp local-data/10-internal-data-dump.md \
+  rag-llm-langchain/seed-docs:/data/docs/10-internal-data-dump.md
+kubectl delete pod seed-docs -n rag-llm-langchain
 ```
-
-The ingest CronJob and its manual clone read this URI from the manifest
-(`DOCS_GCS_URI`).
 
 ### F2. Run a manual ingest. Why?
 So the index exists immediately — the 6-hourly CronJob is just the safety net.
@@ -359,19 +384,21 @@ gh run watch          # watch the pipeline go green
 ## Phase H — Smoke test the live contract. Why?
 
 A "deployed" system is only done when its API contract is proven from the
-outside world.
+cluster itself.
 
 ```bash
-IP=34.63.204.167
+kubectl port-forward -n rag-llm-langchain svc/gateway 8080:80 & sleep 3
 
-curl -s http://$IP/healthz                                    # {"status":"ok"}
-curl -s http://$IP/models                                     # qwen2.5:0.5b
+curl -s http://localhost:8080/healthz        # {"status":"ok"}
+curl -s http://localhost:8080/models         # qwen2.5:0.5b
 
-curl -s -X POST http://$IP/chat -H 'Content-Type: application/json' \
+curl -s -X POST http://localhost:8080/chat -H 'Content-Type: application/json' \
   -d '{"messages":[{"role":"user","content":"Say hello"}]}'
 
-curl -s -X POST http://$IP/rag -H 'Content-Type: application/json' \
-  -d '{"query":"What is RAG?"}'                               # grounded answer
+curl -s -X POST http://localhost:8080/rag -H 'Content-Type: application/json' \
+  -d '{"query":"What is RAG?"}'                       # grounded answer from internal docs
+
+kill %1
 ```
 
 ---
@@ -383,11 +410,13 @@ curl -s -X POST http://$IP/rag -H 'Content-Type: application/json' \
 | Watch the workloads          | `kubectl -n rag-llm-langchain get pods -w`                                |
 | Tail the gateway logs        | `kubectl -n rag-llm-langchain logs deploy/gateway -f`                     |
 | Re-ingest the knowledge base | `kubectl create job --from=cronjob/rag-ingest rag-ingest-manual -n rag-llm-langchain` |
-| Restart after image rebuild  | `kubectl -n rag-llm-langchain rollout restart deploy/gateway deploy/rag-service deploy/serving-llm deploy/serving-embedding` |
-| See the ingress address      | `gcloud compute addresses describe gateway-static --region=us-central1 --format='value(address)'` |
-| Tear down the app            | `kubectl delete -k k8s/base`                                  |
+| Force ArgoCD sync after push | `kubectl patch app rag-llm-langchain -n argocd --type merge -p '{"operation":{"sync":{"revision":"main","prune":true}}}'` |
+| Port-forward for local test  | `kubectl port-forward -n rag-llm-langchain svc/gateway 8080:80`                    |
+| Rebuild rag image after code change | `docker build --platform linux/amd64 -t $AR/rag:<NEW_TAG> rag/ && docker push $AR/rag:<NEW_TAG>` |
+| Tear down the app            | `kubectl delete -k k8s/overlays/prod`                        |
 | Tear down the cluster        | `terraform destroy` (data volumes persist until deleted)       |
 
 Every phase exists because the previous one left a gap: infra before cluster,
-registry before pull, PVs before data, overlay before images, LB before URL,
-docs+GCS before RAG, WIF before CI, and the smoke test before you call it done.
+registry before pull, PVs before data, overlay before images, ArgoCD before
+continuous deploy, docs before RAG, WIF before CI, and the smoke test before
+you call it done.

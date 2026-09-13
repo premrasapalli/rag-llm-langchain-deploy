@@ -27,20 +27,27 @@ User question ---> embed the question ----------------------->|
 
 ---
 
-## Step 1: Seed the documents into GCS
+## Step 1: Seed the documents into the PVC
+
+The live `prod` overlay runs CPU-only and seeds the single internal-data file
+into the `rag-data` PVC directly (no GCS involved). The share is RWX Filestore,
+so any pod writing to `/data/docs` works:
 
 ```bash
-# Create the bucket
-gcloud storage buckets create gs://rag-llm-langchain-docs --location=us-central1
+# Spin up a scratch pod that mounts the rag-data PVC
+kubectl -n rag-llm-langchain run seed-docs \
+  --image=busybox:1.36 --restart=Never --command -- sh -c "sleep 600"
 
-# Upload the knowledge base docs
-gcloud storage cp -r docs gs://rag-llm-langchain-docs/docs
+# Copy the local doc into the shared volume
+kubectl cp local-data/10-internal-data-dump.md \
+  rag-llm-langchain/seed-docs:/data/docs/10-internal-data-dump.md
 
-# Grant the node SA read access (for the seed-docs initContainer)
-gsutil iam ch \
-  serviceAccount:rag-llm-langchain-gke@rag-llm-langchain.iam.gserviceaccount.com:objectViewer \
-  gs://rag-llm-langchain-docs
+# Clean up the scratch pod
+kubectl delete pod seed-docs -n rag-llm-langchain
 ```
+
+(Alternative: the CronJob's `seed-docs` initContainer can seed from GCS by
+setting `DOCS_GCS_URI` — see §"The seed-docs initContainer" below.)
 
 ## Step 2: Run a manual ingest
 
@@ -76,9 +83,11 @@ If count is 0 or `chroma.sqlite3` is missing, see the chromadb pin gotcha below.
 
 ## Step 4: Ask a grounded question
 
+The gateway is a ClusterIP service; reach it with a port-forward:
+
 ```bash
-IP=$(kubectl -n rag-llm-langchain get svc gateway-lb -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-curl -s -X POST http://$IP/rag -H 'Content-Type: application/json' \
+kubectl port-forward -n rag-llm-langchain svc/gateway 8080:80 & sleep 3
+curl -s -X POST http://localhost:8080/rag -H 'Content-Type: application/json' \
   -d '{"query":"What endpoints does the API gateway expose?"}' | python3 -m json.tool
 ```
 
@@ -89,25 +98,32 @@ A healthy answer quotes the actual endpoints (`/healthz`, `/models`, `/chat`,
 
 ## How ingestion works (under the hood)
 
-The `rag-ingest` CronJob runs `python -m ingest --dir /data/docs`:
+The `rag-ingest` CronJob runs `python -m ingest --wipe --paths` on the seeded
+file:
 
-1. Walks `/data/docs` for `.md` and `.txt` files.
-2. Loads and splits each into overlapping chunks.
-3. Embeds every chunk via TEI (`POST /embeddings`).
+1. Reads `/data/docs/10-internal-data-dump.md`.
+2. Loads and splits it into overlapping chunks (`CHUNK_SIZE=300`,
+   `CHUNK_OVERLAP=30`).
+3. Embeds every chunk via TEI in batches of `EMBED_BATCH=16`
+   (`POST /embeddings`).
 4. Upserts chunk text + embedding into Chroma collection `knowledge_base`.
 
+> **TEI hard limits:** at most **32 items / 512 tokens per request**. The live
+> index uses `CHUNK_SIZE=300` + `EMBED_BATCH=16` specifically to stay under
+> those limits (raising them → 413 `Validation` errors). Last ingest:
+> **3,489 chunks**.
+
 ```bash
-# Inspect what was seeded
+# Inspect what gets seeded
 kubectl -n rag-llm-langchain get cronjob rag-ingest -o yaml | grep -A5 DOCS_GCS_URI
 ```
 
 ## The seed-docs initContainer
 
-Before ingestion runs, a `seed-docs` initContainer rsyncs `DOCS_GCS_URI` into
-`/data/docs` on the shared PVC. This means:
-
-- Docs live in GCS (durable, versionable).
-- The ingest job always starts from fresh docs.
+Before ingestion runs, a `seed-docs` initContainer copies `DOCS_GCS_URI` (if
+set) into `/data/docs` on the shared PVC. In the live CPU deploy `DOCS_GCS_URI`
+is empty and the file is put there with `kubectl cp` (see Step 1) — either way
+the ingest job starts from the file already in `/data/docs`:
 
 ---
 

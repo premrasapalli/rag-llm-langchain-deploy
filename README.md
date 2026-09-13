@@ -2,13 +2,15 @@
 
 An end-to-end RAG + LLM (LangChain) deployment stack for Google Cloud (GKE):
 
-- **Model serving** — vLLM (OpenAI-compatible) for the LLM, Text Embeddings
-  Inference (TEI) for embeddings. Models auto-download into a shared volume.
+- **Model serving** — Ollama (OpenAI-compatible) on CPU for the LLM, Text
+  Embeddings Inference (TEI) for embeddings. Models auto-download into a shared
+  volume. A GPU/vLLM path is declared in the `gke` overlay but **disabled** until
+  L4 GPU quota is available.
 - **RAG pipeline** — Chroma vector DB, document ingestion (CronJob), retrieval
   and a grounded-answer chain.
 - **API gateway** — FastAPI exposing `/chat`, `/rag`, `/models`, `/healthz`.
-- **GitOps-ready K8s manifests** — Kustomize `base` + overlays deployable via ArgoCD.
-- **Terraform IaC** — GKE cluster (CPU + GPU pools) and Artifact Registry.
+- **GitOps-ready K8s manifests** — Kustomize `base` + overlays deployed via ArgoCD.
+- **Terraform IaC** — GKE cluster (CPU pool) and Artifact Registry.
 
 > **Deployment target**: `project_id = rag-llm-langchain`, region `us-central1`.
 > Images live in Artifact Registry (`us-central1-docker.pkg.dev/rag-llm-langchain/rag-llm-langchain`),
@@ -19,16 +21,16 @@ An end-to-end RAG + LLM (LangChain) deployment stack for Google Cloud (GKE):
 
 ```
                         ┌──────────────┐
-   Ingress ──►  Gateway  ──►  serving-llm (vLLM, :8000 /v1)
-   (/chat,/rag)          │      └── model-store PVC (HF download initContainer)
+   Ingress ──►  Gateway  ──►  serving-llm (Ollama CPU, :8000 /v1)
+   (/chat,/rag)          │      └── model-store PVC (Ollama models)
                         │  ──►  serving-embedding (TEI, :8001 /v1)
                         │  ──►  rag-service (:8080 /answer)
-                        │         └── Chroma (rag-data PVC)
+                        │         └── Chroma (rag-data PVC: Filestore RWX)
                         └── ──►  rag-ingest (CronJob, every 6h)
 ```
 
 Query flow for RAG: user → `/rag` → retriever embeds query via TEI, top-k chunks
-from Chroma → vLLM prompt with grounded context → answer.
+from Chroma → Ollama prompt with grounded context → answer.
 
 ## 1. Local bring-up (Docker Compose)
 
@@ -83,53 +85,69 @@ gcloud container clusters get-credentials rag-llm-langchain-cluster --region us-
 
 ## 3. Build & push images (Artifact Registry)
 
+The `rag` image is versioned (`1.0.3`). Because the local machine is arm64,
+builds must target `linux/amd64` for the GKE amd64 nodes:
+
 ```bash
 export REGION=us-central1; export PROJECT_ID=rag-llm-langchain
 gcloud auth configure-docker $REGION-docker.pkg.dev
 
-docker build -t $REGION-docker.pkg.dev/$PROJECT_ID/rag-llm-langchain/model-loader:1.0.0 serving/ -f serving/Dockerfile.model-loader
-docker build -t $REGION-docker.pkg.dev/$PROJECT_ID/rag-llm-langchain/rag:1.0.0 rag/
-docker build -t $REGION-docker.pkg.dev/$PROJECT_ID/rag-llm-langchain/gateway:1.0.0 gateway/
-
-# vLLM and TEI are pulled from upstream (pinned versions, not latest):
-docker pull vllm/vllm-openai:v0.9.0
-docker pull ghcr.io/huggingface/text-embeddings-inference:1.5
+docker build --platform linux/amd64 -t $REGION-docker.pkg.dev/$PROJECT_ID/rag-llm-langchain/rag:1.0.3 rag/
+docker push $REGION-docker.pkg.dev/$PROJECT_ID/rag-llm-langchain/rag:1.0.3
 ```
 
-## 4. Deploy to GKE (Kustomize / GitOps)
+The `gateway` and `model-loader` images were built once from their directories
+(`gateway/`, `serving/ -f serving/Dockerfile.model-loader`) and are pinned at
+`1.0.0`. TEI is pulled from upstream (`ghcr.io/huggingface/text-embeddings-inference:1.5`).
 
-The base manifests reference **bare image names** (`rag-llm-langchain/<name>`). Overlays set
-the real registry and GPU settings, so the registry is configured in one place.
+> If your `gcloud` account lacks Cloud Build roles, build+push locally as above
+> and skip `gcloud builds submit` (it also needs Cloud Build API + IAM).
+
+## 4. Deploy to GKE (ArgoCD / Kustomize)
+
+The base manifests reference **bare image names** (`rag-llm-langchain/<name>`). The
+`prod` overlay rewrites them to the real Artifact Registry path.
+
+Current live config is **CPU-only** (`k8s/overlays/prod`):
 
 ```bash
-# CPU-only bring-up (small 0.5B model, no GPU):
+# CPU-only bring-up (Ollama, qwen2.5:0.5b, no GPU):
 kubectl apply -k k8s/overlays/prod
-
-# GPU serving (needs gpu-pool + NVIDIA driver DaemonSet):
-kubectl apply -k k8s/overlays/gke
 ```
 
-Or via ArgoCD (manifest in `argocd/rag-llm-langchain-app.yaml`):
+Deploy via ArgoCD (this is how the cluster is actually managed):
 
 ```bash
-argocd app create rag-llm-langchain --repo https://github.com/premrasapalli/rag-llm-langchain-deploy.git \
-  --path k8s/overlays/prod --dest-server https://kubernetes.default.svc --dest-namespace rag-llm-langchain \
-  --sync-policy automated --self-heal --prune
+# 1. Install ArgoCD once
+helm repo add argo https://argoproj.github.io/argo-helm
+helm upgrade --install argocd argo/argo-cd --namespace argocd --create-namespace --wait
+
+# 2. Register the app (auto-sync + self-heal + prune)
+kubectl apply -f argocd/rag-llm-langchain-app.yaml   # targets k8s/overlays/prod
+
+# 3. Force a sync after a push to main
+kubectl patch app rag-llm-langchain -n argocd --type merge \
+  -p '{"operation":{"sync":{"revision":"main","prune":true}}}'
 ```
 
-`:latest` tag on images was removed — model-loader/rag/gateway are versioned
-(`1.0.0`) and upstream vLLM/TEI are pinned, so builds are reproducible. The
-GitHub Actions workflow also tags each push with `1.0.<epoch>-<sha>`.
+ArgoCD watches `main`, so every pushed manifest change rolls out automatically.
+The app manifest targets `k8s/overlays/prod` (CPU). To move to GPU later, switch
+that path to `k8s/overlays/gke` and provision the GPU pool first (see §5).
+
+Tags are not `latest` — model-loader/rag/gateway are versioned and upstream
+TEI is pinned, so builds are reproducible. The GitHub Actions workflow also tags
+each push with `1.0.<epoch>-<sha>`.
 
 Verify:
 
 ```bash
-kubectl get pods -n rag-llm-langchain -w          # wait: serving-llm initContainer downloads model
+kubectl get pods -n rag-llm-langchain -w          # wait: serving-llm pulls the Ollama model
 kubectl port-forward -n rag-llm-langchain svc/gateway 8080:80
+curl http://localhost:8080/healthz
 curl http://localhost:8080/chat -X POST -d '{"messages":[{"role":"user","content":"hi"}]}' -H 'Content-Type: application/json'
 ```
 
-The first model download can take a few minutes depending on model size.
+The first model download (qwen2.5:0.5b) takes a minute or two.
 
 ### Networking / TLS
 
@@ -156,57 +174,64 @@ kubectl -n rag-llm-langchain create secret generic gateway-secret --from-literal
 
 Do **not** expose the gateway to the public internet with auth disabled.
 
-## 5. GPU serving (optional)
+## 5. GPU serving (optional, currently DISABLED)
 
-The base stays CPU-only (Qwen 2.5 0.5B). To serve a real model on the GPU pool:
+The live deployment is **CPU-only** (Ollama, Qwen 2.5 0.5B) because the global
+GPU quota (`GPUS_ALL_REGIONS`) is 0 — no `gpu-pool` node pool exists. The GPU
+path is fully declared for later:
 
-1. Apply `k8s/overlays/gke` (or `k8s/overlays/gpu`). This overlay:
+1. Flip on the GPU pool (`enable_gpu_pool = true` in `terraform.tfvars`) and
+   `terraform apply`, then add `roles/artifactregistry.reader` to the new node SA.
+2. Point the ArgoCD app at `k8s/overlays/gke` (GPU overlay) and sync. That overlay:
    - adds `nvidia.com/gpu: "1"` and a `cloud.google.com/gke-nodepool: gpu-pool`
      nodeSelector to `serving-llm`,
-   - overrides `HF_MODEL` to `Qwen/Qwen2.5-7B-Instruct` (edit the patch to change
-     the model) and bumps the model-store PVC to 100Gi,
-   - deploys the NVIDIA GPU driver DaemonSet vendored from the official GKE
-     manifest (`k8s/overlays/gpu/nvidia-driver/`) in namespace `kube-system`.
-   (On GKE ≥ 1.32.2 the driver is also auto-installed by default — the
-   DaemonSet is a safe fallback either way.)
-2. For **gated models** (Llama-3, Gemma, …), set the HF token:
+   - deploys the NVIDIA GPU driver DaemonSet (`k8s/overlays/gpu/nvidia-driver/`)
+     in namespace `kube-system` (GKE ≥ 1.32.2 also auto-installs it),
+   - overrides `HF_MODEL` to `Qwen/Qwen2.5-7B-Instruct` on the model-loader
+     initContainer (edit the patch to change the model).
+3. For **gated models** (Llama-3, Gemma, …), set the HF token:
    ```bash
    kubectl -n rag-llm-langchain create secret generic hf-secret --from-literal=hf-token=$HF_TOKEN \
      --dry-run=client -o yaml | kubectl apply -f -
    ```
-   The model-loader initContainer reads `HF_TOKEN` from `hf-secret`
-   (`optional: true`, so open models work with no secret present).
-3. Edit `k8s/overlays/gpu/patch-serving-llm.yaml` if your chosen model needs
+4. Edit `k8s/overlays/gpu/patch-serving-llm.yaml` if your chosen model needs
    more memory/VRAM than a single L4 (24 GB).
 
-The `model-store` PVC is `pd-ssd` (ReadWriteOnce — a single pod owns the model;
-use Filestore only if you must share one model across replicas).
+The `model-store` PVC is `premium-rwo` (ReadWriteOnce — a single pod owns the
+model; use Filestore only if you must share one model across replicas).
 
 ## 6. RAG content & ops
 
-- **Knowledge base**: the ingest CronJob indexes **only**
-  `local-data/10-internal-data-dump.md` (the synthetic internal data dump) into
+- **Knowledge base**: the ingest CronJob indexes
+  `local-data/10-internal-data-dump.md` (the synthetic internal-data dump) into
   the `rag-data` PVC, wiping the collection first (`ingest --wipe --paths`), so
-  the RAG index always equals exactly that file. To seed it on GKE, upload the
-  file and set `DOCS_GCS_URI` to its GCS object path
-  (e.g. `gs://rag-llm-langchain-docs/10-internal-data-dump.md`) on the seed
-  initContainer, which `gsutil cp`s it into `/data/docs`. The workload identity
-  service account needs `roles/storage.objectViewer` on the bucket.
-  - Local bring-up (`docker compose up ingest`) mounts `./local-data` and
-    ingests the same single file automatically.
-- **Persistence**: `rag-data` PVC must use a ReadWriteMany-capable class
-  (`nfs-filestore`, NetApp, etc.) because the rag-service *and* ingest pod both
-  mount it. GCE `pd-ssd`/`standard-rwo` are RWO-only. Sized at 20Gi by default;
-  grow with your corpus.
+  the RAG index always equals exactly that file (last run: **3,489 chunks** from
+  `rag:1.0.3`). Because the `prod` overlay doesn't use GCS seeding, the file is
+  copied into the PVC directly:
+  ```bash
+  kubectl -n rag-llm-langchain run seed-docs --image=busybox:1.36 --restart=Never \
+    --command -- sh -c "sleep 600"
+  kubectl cp local-data/10-internal-data-dump.md \
+    rag-llm-langchain/seed-docs:/data/docs/10-internal-data-dump.md
+  kubectl delete pod seed-docs -n rag-llm-langchain
+  ```
+  (The CronJob's `seed-docs` initContainer still supports seeding from GCS via
+  `DOCS_GCS_URI` if you prefer `gsutil cp`; the node SA then needs
+  `roles/storage.objectViewer` on the bucket.)
+- **Chunking limits**: TEI (`BAAI/bge-small-en-v1.5`) accepts at most 32 items
+  per request and 512 tokens per input. `rag/loader.py` uses `CHUNK_SIZE=300` /
+  `CHUNK_OVERLAP=30`, and `rag/ingest.py` embeds in batches of `EMBED_BATCH=16`
+  to stay under both limits. If you raise these, you will hit TEI 413 errors;
+  bump `EMBED_BATCH` (and re-chunk) instead of increasing chunk size above ~500.
+- **Persistence**: `rag-data` PVC uses `nfs-filestore` (Filestore CSI,
+  `basic-hdd`, RWX, **100Gi**), required because the rag-service *and* the ingest
+  pod both mount it. The StorageClass must set `instance-location: us-central1-a`
+  (Immediate binding needs an explicit zone — provisioning fails without it).
 - **Embedding model**: `BAAI/bge-small-en-v1.5` is served by TEI and is kept
   consistent between ingestion and query time via `EMBEDDING_MODEL`.
-- **Realtime feeds (optional)**: the `feed-ingest` Deployment polls the
-  comma-separated `RSS_FEEDS` (RSS/Atom) every `FEED_POLL_SECONDS` and upserts
-  *new* items (deduped by their id/link) into the same Chroma store using the
-  same chunker and bge embeddings. Feed items are immediately retrievable by
-  the rag-service — no re-deploy or re-seed needed. Example:
-  `RSS_FEEDS="https://hnrss.org/newest?points=100"`. Set `RSS_FEEDS` to `""`
-  (default) to disable.
+- **Realtime feeds**: the `feed-ingest` Deployment was **removed** — this is an
+  internal-data knowledge base, so RSS/Atom ingestion isn't deployed. The code
+  (`rag/feeds.py`) still exists if you want to re-enable it later.
 
 ## 7. CI/CD & monitoring
 
@@ -216,7 +241,8 @@ use Filestore only if you must share one model across replicas).
   - `PROJECT_ID` = `rag-llm-langchain`
   - `WIF_PROVIDER` = your workload identity provider resource name
   - `WIF_SERVICE_ACCOUNT` = the SA with `roles/artifactregistry.writer`
-- **ArgoCD** app manifest: `argocd/rag-llm-langchain-app.yaml` (targets `k8s/overlays/gke`).
+- **ArgoCD** app manifest: `argocd/rag-llm-langchain-app.yaml` (targets `k8s/overlays/prod`,
+  installed via the `argo/argo-cd` Helm chart in the `argocd` namespace).
 - **Monitoring** (`monitoring/main.tf`): alerting policies for rag-llm-langchain workload
   readiness (gateway/vLLM/rag-service down), GPU-quota usage > 80%, and
   gpu-pool node not-ready. Set `notify_emails` and `terraform apply` in
@@ -226,10 +252,9 @@ use Filestore only if you must share one model across replicas).
 
 | Component | Env | Default |
 |-----------|-----|---------|
-| Gateway  | `LLM_URL`, `LLM_MODEL`, `RAG_URL`, `API_KEY` | vLLM :8000/v1, `rag-llm-langchain-model`, rag-service :8080, auth off |
-| RAG      | `EMBEDDING_BASE_URL`, `EMBEDDING_MODEL`, `LLM_BASE_URL`, `LLM_MODEL`, `RAG_PERSIST_DIR` | TEI :8001/v1, `BAAI/bge-small-en-v1.5`, vLLM :8000/v1, `rag-llm-langchain-model`, /data/chroma |
-| vLLM     | `HF_MODEL` (initContainer), optional `HF_TOKEN` | `Qwen/Qwen2.5-0.5B-Instruct` |
-| feed-ingest | `RSS_FEEDS`, `RSS_MAX_ITEMS`, `FEED_POLL_SECONDS`, `RSS_FETCH_TIMEOUT` | empty (disabled), 20, 300s, 15s |
+| Gateway  | `LLM_URL`, `LLM_MODEL`, `RAG_URL`, `API_KEY` | Ollama :8000/v1, `qwen2.5:0.5b`, rag-service :8080, auth off |
+| RAG      | `EMBEDDING_BASE_URL`, `EMBEDDING_MODEL`, `LLM_BASE_URL`, `LLM_MODEL`, `RAG_PERSIST_DIR`, `EMBED_BATCH` | TEI :8001/v1, `BAAI/bge-small-en-v1.5`, Ollama :8000/v1, `qwen2.5:0.5b`, /data/chroma, 16 |
+| Ollama    | `HF_MODEL` → `OLLAMA_MODELS` | Qwen2.5-0.5B (CPU) |
 
 
 

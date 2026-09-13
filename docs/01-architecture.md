@@ -30,7 +30,7 @@ STORAGE / CLUSTER (GKE nodes, ingress,        WHY: containers are ephemeral, so
 
 ### 1. The gateway — why add it
 Clients should never depend on individual backend URLs or the served model name.
-If you swap vLLM for Ollama, the client keeps calling `/chat` and never notices.
+If you swap Ollama for vLLM (GPU path), the client keeps calling `/chat` and never notices.
 
 ### 2. The RAG service — why add it
 Retrieval (embed + search Chroma + build a grounded prompt) is a full
@@ -111,9 +111,20 @@ kubectl -n rag-llm-langchain get svc
 # rag-service          ClusterIP   10.x.x.x      8080/TCP
 ```
 
-### Verify the LoadBalancer has a public IP
+### Reach the gateway (port-forward or optional LB)
 
 ```bash
+kubectl port-forward -n rag-llm-langchain svc/gateway 8080:80 & sleep 3
+curl -s http://localhost:8080/healthz           # {"status":"ok"}
+kill %1
+```
+
+The `gateway` service is ClusterIP in this deploy. For a public IP instead,
+create an LB service:
+
+```bash
+kubectl -n rag-llm-langchain create service loadbalancer gateway-lb --tcp=80:8080 \
+  --dry-run=client -o yaml | kubectl apply -f -
 kubectl -n rag-llm-langchain get svc gateway-lb
 # NAME         TYPE           CLUSTER-IP    EXTERNAL-IP
 # gateway-lb   LoadBalancer   10.x.x.x      34.63.204.167
@@ -125,9 +136,11 @@ kubectl -n rag-llm-langchain get svc gateway-lb
 `client -> gateway -> LLM -> gateway -> client`
 
 ```bash
-curl -s -X POST http://34.63.204.167/chat \
+kubectl port-forward -n rag-llm-langchain svc/gateway 8080:80 & sleep 3
+curl -s -X POST http://localhost:8080/chat \
   -H 'Content-Type: application/json' \
   -d '{"messages":[{"role":"user","content":"Hello"}]}'
+kill %1
 ```
 
 **RAG path (grounded in documents):**
@@ -135,13 +148,15 @@ curl -s -X POST http://34.63.204.167/chat \
          -> rag-service -> LLM -> gateway -> client`
 
 ```bash
-curl -s -X POST http://34.63.204.167/rag \
+kubectl port-forward -n rag-llm-langchain svc/gateway 8080:80 & sleep 3
+curl -s -X POST http://localhost:8080/rag \
   -H 'Content-Type: application/json' \
   -d '{"query":"What is RAG?"}'
+kill %1
 ```
 
 **Ingestion path (offline):**
-`docs (/data/docs or GCS) -> chunk + embed(TEI) -> store in Chroma (rag-data)`
+`local-data doc (/data/docs) -> chunk + embed(TEI, batched) -> store in Chroma (rag-data)`
 
 ```bash
 kubectl create job --from=cronjob/rag-ingest rag-ingest-manual -n rag-llm-langchain
@@ -187,7 +202,7 @@ kubectl -n rag-llm-langchain describe deploy rag-service
 kubectl -n rag-llm-langchain logs deploy/rag-service --tail=5
 ```
 
-## 3. serving-llm (Deployment — Ollama :8000 / vLLM :8000)
+## 3. serving-llm (Deployment — Ollama :8000, OpenAI-compatible / vLLM GPU path)
 ```bash
 kubectl -n rag-llm-langchain describe deploy serving-llm
 kubectl -n rag-llm-langchain logs deploy/serving-llm --tail=5
@@ -222,9 +237,10 @@ kubectl -n rag-llm-langchain get pvc model-store embed-store
 kubectl -n rag-llm-langchain get pvc rag-data
 ```
 
-## 9. gateway-lb (Service, type: LoadBalancer)
+## 9. gateway (Service, type: ClusterIP)
 ```bash
-kubectl -n rag-llm-langchain get svc gateway-lb
+kubectl -n rag-llm-langchain get svc gateway
+kubectl port-forward -n rag-llm-langchain svc/gateway 8080:80   # local access
 ```
 
 ## 10. Artifact Registry repo `rag-llm-langchain`

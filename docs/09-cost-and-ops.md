@@ -14,23 +14,23 @@ Commands to monitor, operate, and tear down the live platform.
 | Tail LLM logs | `kubectl -n rag-llm-langchain logs deploy/serving-llm -f` |
 | Re-ingest knowledge base | `kubectl create job --from=cronjob/rag-ingest rag-ingest-manual -n rag-llm-langchain` |
 | Restart after image rebuild | `kubectl -n rag-llm-langchain rollout restart deploy/gateway deploy/rag-service deploy/serving-llm deploy/serving-embedding` |
-| See public IP | `kubectl -n get svc gateway-lb` |
-| See reserved static IP | `gcloud compute addresses describe gateway-static --region=us-central1 --format='value(address)'` |
-| Health check live | `curl -s http://<EXTERNAL-IP>/healthz` |
+| Force ArgoCD sync after push | `kubectl patch app rag-llm-langchain -n argocd --type merge -p '{"operation":{"sync":{"revision":"main","prune":true}}}'` |
+| Reach gateway locally | `kubectl port-forward -n rag-llm-langchain svc/gateway 8080:80` |
+| Health check live | `curl -s http://localhost:8080/healthz` (during port-forward) |
 | Check vector store count | `R=$(kubectl get pod -n rag-llm-langchain -l app=rag-service -o jsonpath='{.items[0].metadata.name}'); kubectl exec -n rag-llm-langchain "$R" -- python -c "from config import get_store; print(get_store()._collection.count())"` |
 | Check PVC usage | `kubectl -n rag-llm-langchain get pvc` |
 | Check cluster nodes | `gcloud container node-pools list --cluster rag-llm-langchain-cluster --region us-central1` |
-| Check running images | `kubectl -n get deploy -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.template.spec.containers[0].image}{"\n"}{end}'` |
+| Check running images | `kubectl get deploy -n rag-llm-langchain -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.template.spec.containers[0].image}{"\n"}{end}'` |
 
 ---
 
 ## Teardown (in the right order)
 
 ```bash
-# 1. Remove workloads first
-kubectl delete -k k8s/base
+# 1. Remove workloads first (happens automatically on ArgoCD app delete too)
+kubectl delete -k k8s/overlays/prod   # or: kubectl -n argocd delete app rag-llm-langchain
 
-# 2. Delete the LoadBalancer (avoids orphaned external IP)
+# 2. Delete the LoadBalancer if you created one (avoids orphaned external IP)
 kubectl -n rag-llm-langchain delete svc gateway-lb --ignore-not-found
 
 # 3. Tear down infrastructure (Terraform)
