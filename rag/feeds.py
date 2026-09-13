@@ -28,6 +28,7 @@ FETCH_TIMEOUT = int(os.environ.get("RSS_FETCH_TIMEOUT", "15"))
 USER_AGENT = os.environ.get(
     "RSS_USER_AGENT", "Mozilla/5.0 (rag-llm-langchain-deploy realtime feed ingester)"
 )
+EMBED_BATCH = int(os.environ.get("EMBED_BATCH", "16"))
 
 
 def _splitter() -> RecursiveCharacterTextSplitter:
@@ -141,7 +142,8 @@ def ingest_feeds(feeds: list[str] | None = None) -> int:
             + hashlib.sha1(f"{guid}#{i}".encode("utf-8")).hexdigest()
             for i in range(len(chunks))
         ]
-        store.add_documents(chunks, ids=ids)
+        for i in range(0, len(chunks), EMBED_BATCH):
+            store.add_documents(chunks[i : i + EMBED_BATCH], ids=ids[i : i + EMBED_BATCH])
         added += len(chunks)
         logger.info("New feed item -> %d chunks: %s", len(chunks), doc.metadata["title"])
     logger.info("Feed ingest round done: %d new chunks", added)
