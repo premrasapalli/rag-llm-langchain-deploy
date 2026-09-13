@@ -6,4 +6,5 @@ provisioner: filestore.csi.storage.gke.io
 parameters:
   tier: basic-hdd
   network: default
+  instance-location: us-central1-a
 reclaimPolicy: Delete
