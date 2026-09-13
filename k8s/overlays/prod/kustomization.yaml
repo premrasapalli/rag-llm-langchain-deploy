@@ -16,7 +16,7 @@ images:
     newTag: "1.0.0"
   - name: rag-llm-langchain/rag
     newName: us-central1-docker.pkg.dev/rag-llm-langchain/rag-llm-langchain/rag
-    newTag: "1.0.0"
+    newTag: "1.0.1"
   - name: rag-llm-langchain/gateway
     newName: us-central1-docker.pkg.dev/rag-llm-langchain/rag-llm-langchain/gateway
     newTag: "1.0.0"

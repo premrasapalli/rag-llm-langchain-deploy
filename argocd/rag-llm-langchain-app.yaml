@@ -8,7 +8,7 @@ spec:
   source:
     repoURL: https://github.com/premrasapalli/rag-llm-langchain-deploy.git
     targetRevision: main
-    path: k8s/overlays/gke
+    path: k8s/overlays/prod
   destination:
     server: https://kubernetes.default.svc
     namespace: rag-llm-langchain
