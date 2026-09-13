@@ -19,7 +19,6 @@ resources:
   - svc-gateway.yaml
   - ingress.yaml
   - ingest-cronjob.yaml
-  - feed-ingest.yaml
 # Registry note: the base manifests reference bare image names (rag-llm-langchain/<name>).
 # The kustomize `images` transform here only pins tags; the real Artifact
 # Registry (REGION-docker.pkg.dev/PROJECT_ID/rag-llm-langchain) is injected by the prod
