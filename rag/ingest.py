@@ -7,6 +7,8 @@ from pathlib import Path
 from config import get_store
 from loader import load_and_chunk
 
+EMBED_BATCH = int(os.environ.get("EMBED_BATCH", "16"))
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("rag.ingest")
 
@@ -33,7 +35,8 @@ def ingest_paths(paths: list[Path], wipe: bool = False) -> int:
         if not chunks:
             continue
         ids = [f"{path.stem}-{i}" for i in range(len(chunks))]
-        store.add_documents(chunks, ids=ids)
+        for i in range(0, len(chunks), EMBED_BATCH):
+            store.add_documents(chunks[i : i + EMBED_BATCH], ids=ids[i : i + EMBED_BATCH])
         total += len(chunks)
         logger.info("Ingested %s -> %d chunks", path, len(chunks))
 
